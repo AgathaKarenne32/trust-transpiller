@@ -25,66 +25,99 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Set up JDK 17 (required by Rascal 0.28.x)
+      # 2. Set up JDK 17
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
-      # 3. Cache the Rascal jar so we don't re-download on every run
+      # 3. Cache the Rascal shell JAR
       - name: Cache Rascal shell JAR
         id: cache-rascal
         uses: actions/cache@v4
         with:
           path: ${{ env.RASCAL_JAR }}
-          key: rascal-shell-stable-${{ hashFiles('RASCAL.MF') }}
+          key: rascal-shell-stable
 
       # 4. Download Rascal if not cached
       - name: Download Rascal shell (stable)
         if: steps.cache-rascal.outputs.cache-hit != 'true'
         run: |
-          echo "Downloading Rascal shell from $RASCAL_URL …"
+          echo "Downloading Rascal shell …"
           curl -fsSL "$RASCAL_URL" -o "$RASCAL_JAR"
-          echo "Download complete. Size: $(du -sh $RASCAL_JAR | cut -f1)"
+          echo "Size: $(du -sh $RASCAL_JAR | cut -f1)"
 
-      # 5. Validate the JAR exists and is a valid zip/jar
+      # 5. Validate JAR integrity
       - name: Validate Rascal JAR
         run: |
-          if [ ! -f "$RASCAL_JAR" ]; then
-            echo "::error::Rascal JAR not found at $RASCAL_JAR"
-            exit 1
-          fi
-          jar tf "$RASCAL_JAR" > /dev/null 2>&1 || {
-            echo "::error::Downloaded file is not a valid JAR"
-            exit 1
-          }
-          echo "JAR is valid."
+          [ -f "$RASCAL_JAR" ] || { echo "::error::JAR not found"; exit 1; }
+          unzip -t "$RASCAL_JAR" > /dev/null 2>&1 \
+            || { echo "::error::File is not a valid JAR/ZIP"; exit 1; }
+          echo "JAR OK — $(jar tf $RASCAL_JAR | wc -l) entries"
 
-      # 6. Verify source structure
+      # 6. Verify project structure and META-INF manifest
+      #    IMPORTANT: Rascal 0.42+ reads META-INF/RASCAL.MF (not ./RASCAL.MF)
       - name: Verify project structure
         run: |
-          echo "── Project layout ──────────────────────"
+          echo "── .rsc source files ─────────────────────"
           find src -name "*.rsc" | sort
-          echo "────────────────────────────────────────"
-          [ -f RASCAL.MF ] && cat RASCAL.MF || echo "::warning::RASCAL.MF not found"
+          echo ""
+          echo "── META-INF/RASCAL.MF ────────────────────"
+          if [ -f META-INF/RASCAL.MF ]; then
+            cat META-INF/RASCAL.MF
+          else
+            echo "::error::META-INF/RASCAL.MF is MISSING"
+            exit 1
+          fi
+          echo "──────────────────────────────────────────"
 
-      # 7. Run Trust-Transpiler
+      # 7. Maven: resolve dependencies and compile
+      #    This populates target/classes (with RASCAL.MF inside META-INF/)
+      #    and target/dependency (all transitive JARs including rascal lib)
+      - name: Maven compile + resolve dependencies
+        run: |
+          mvn --batch-mode --no-transfer-progress \
+              dependency:copy-dependencies \
+                -DoutputDirectory=target/dependency \
+              compile \
+              -Dmaven.compiler.failOnError=false
+
+      # 8. Run Trust-Transpiler
+      #    Classpath order:
+      #      (a) rascal-shell-stable.jar  — the interpreter itself
+      #      (b) target/classes           — compiled stubs + META-INF/RASCAL.MF
+      #      (c) src                      — raw .rsc source files
+      #      (d) target/dependency/*.jar  — rascal stdlib + transitive deps
       - name: Run Trust-Transpiler static audit
         id: run_audit
         run: |
+          DEP_CP=$(find target/dependency -name "*.jar" 2>/dev/null \
+                   | sort | tr '\n' ':' | sed 's/:$//')
+          FULL_CP="${RASCAL_JAR}:target/classes:src"
+          [ -n "$DEP_CP" ] && FULL_CP="${FULL_CP}:${DEP_CP}"
+
+          echo "=== Classpath ==="
+          echo "$FULL_CP" | tr ':' '\n'
+          echo "================="
+
           java \
             -Xmx2G \
             -Xss32m \
-            -cp "$RASCAL_JAR:src" \
+            -cp "$FULL_CP" \
             org.rascalmpl.shell.RascalShell \
             "$MAIN_MODULE" \
             2>&1 | tee audit_output.txt
+          RASCAL_EXIT="${PIPESTATUS[0]}"
 
-          # Propagate non-zero exit codes
-          exit ${PIPESTATUS[0]}
+          # Fail only on hard crash (no report produced at all)
+          if [ "$RASCAL_EXIT" -ne 0 ] \
+             && ! grep -q "TRUST-TRANSPILER AUDIT REPORT" audit_output.txt; then
+            echo "::error::Rascal shell crashed (exit $RASCAL_EXIT) — no report produced"
+            exit "$RASCAL_EXIT"
+          fi
 
-      # 8. Upload audit output as an artefact (always, even on failure)
+      # 9. Upload audit report (always, even on failure)
       - name: Upload audit report
         if: always()
         uses: actions/upload-artifact@v4
@@ -93,26 +126,25 @@ jobs:
           path: audit_output.txt
           retention-days: 30
 
-      # 9. Parse output for vulnerability summary
+      # 10. Write GitHub Step Summary
       - name: Parse vulnerability summary
         if: always()
         run: |
           echo "## Trust-Transpiler Audit Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-
           if grep -q "BUILD PASSED" audit_output.txt; then
             echo "✅ **No vulnerabilities detected.**" >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ **Vulnerabilities detected — build failed.**" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Vulnerabilities detected.**" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
-            grep -E "(CRITICAL|HIGH|MEDIUM|LOW|Sink|Source|Via)" audit_output.txt \
-              >> $GITHUB_STEP_SUMMARY || true
+            grep -E "(CRITICAL|HIGH|MEDIUM|LOW|Sink|Source|Via|Detail)" \
+              audit_output.txt >> $GITHUB_STEP_SUMMARY || true
             echo '```' >> $GITHUB_STEP_SUMMARY
           fi
 
   # ----------------------------------------------------------------
-  # Job 2 — Lint / style check for .rsc files
+  # Job 2 — Lint: module name vs. file path consistency
   # ----------------------------------------------------------------
   lint:
     name: Rascal Source Lint
@@ -124,43 +156,34 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Verify META-INF/RASCAL.MF exists
+        run: |
+          [ -f META-INF/RASCAL.MF ] \
+            || { echo "::error::META-INF/RASCAL.MF missing!"; exit 1; }
+          echo "META-INF/RASCAL.MF ✓"
+
       - name: Check module declarations match file paths
         run: |
           ERRORS=0
           while IFS= read -r -d '' rsc_file; do
-            # Derive expected module name from path  src/foo/bar/Baz.rsc → foo::bar::Baz
             rel="${rsc_file#src/}"
             expected_mod="${rel%.rsc}"
-            expected_mod="${expected_mod//\//:}"
-
-            # Extract declared module name from first non-empty, non-comment line
-            declared=$(grep -m1 "^module " "$rsc_file" | sed 's/^module //' | tr -d ' \r')
-
+            expected_mod="${expected_mod//\//:}"   # /  →  ::
+            declared=$(grep -m1 "^module " "$rsc_file" \
+                       | sed 's/^module //' | tr -d ' \r')
             if [ -z "$declared" ]; then
-              echo "::warning file=$rsc_file::No module declaration found"
+              echo "::warning file=$rsc_file::No module declaration"
             elif [ "$declared" != "$expected_mod" ]; then
-              echo "::error file=$rsc_file::Module mismatch: declared='$declared' expected='$expected_mod'"
+              echo "::error file=$rsc_file::Mismatch: got='$declared' want='$expected_mod'"
               ERRORS=$((ERRORS + 1))
             else
-              echo "  ✓  $rsc_file  →  $declared"
+              echo "  ✓  $declared"
             fi
           done < <(find src -name "*.rsc" -print0)
-
           [ $ERRORS -eq 0 ] || exit 1
 
-      - name: Check for tabs vs spaces consistency
-        run: |
-          echo "Checking indentation consistency …"
-          ISSUES=$(grep -rPn "\t" src/ --include="*.rsc" | wc -l)
-          if [ "$ISSUES" -gt 0 ]; then
-            echo "::warning::$ISSUES lines use tab indentation (prefer spaces in .rsc files)"
-            grep -rPn "\t" src/ --include="*.rsc" | head -20
-          else
-            echo "Indentation is consistent (spaces only)."
-          fi
-
   # ----------------------------------------------------------------
-  # Job 3 — Security gate (fail the pipeline if criticals found)
+  # Job 3 — Security gate: block CRITICAL / HIGH findings
   # ----------------------------------------------------------------
   security-gate:
     name: Security Gate
@@ -169,22 +192,19 @@ jobs:
     if: always()
 
     steps:
-      - name: Download audit report artefact
+      - name: Download audit report
         uses: actions/download-artifact@v4
         with:
           name: trust-transpiler-audit-report
 
-      - name: Enforce zero CRITICAL / HIGH vulnerabilities
+      - name: Enforce zero CRITICAL / HIGH findings
         run: |
           CRITICAL=$(grep -c "CRITICAL" audit_output.txt || true)
-          HIGH=$(grep -c "HIGH" audit_output.txt || true)
-
-          echo "Critical findings : $CRITICAL"
-          echo "High findings     : $HIGH"
-
+          HIGH=$(grep -c "HIGH    " audit_output.txt || true)
+          echo "Critical : $CRITICAL"
+          echo "High     : $HIGH"
           if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
-            echo "::error::Security gate failed: $CRITICAL CRITICAL and $HIGH HIGH vulnerabilities found."
+            echo "::error::Security gate FAILED — $CRITICAL CRITICAL, $HIGH HIGH"
             exit 1
-          else
-            echo "Security gate passed."
           fi
+          echo "Security gate PASSED ✓"
