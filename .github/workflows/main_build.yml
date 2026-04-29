@@ -77,37 +77,25 @@ jobs:
               -Dmaven.compiler.failOnError=false \
               -Dmaven.wagon.http.ssl.insecure=true \
               -Dmaven.wagon.http.ssl.allowall=true
-
+              
       - name: Run Trust-Transpiler static audit
-        id: run_audit
-        # NOTE: always touch audit_output.txt first so the upload step
-        # always finds a file even if Rascal crashes before writing anything.
         run: |
+          # 1. Garante que o arquivo de saída exista para o upload não falhar
           touch audit_output.txt
-
-          DEP_CP=$(find target/dependency -name "*.jar" 2>/dev/null \
-                   | sort | tr '\n' ':' | sed 's/:$//')
+          
+          # 2. Tenta coletar dependências do Maven (se o passo anterior funcionou parcialmente)
+          DEP_CP=$(find target/dependency -name "*.jar" 2>/dev/null | sort | tr '\n' ':' | sed 's/:$//')
+          
+          # 3. Monta o Classpath usando o código-fonte bruto (src) e o JAR estável baixado via curl
+          # Isso ignora qualquer erro de compilação ou rede do Maven
           FULL_CP="${{ env.RASCAL_JAR }}:src"
-          # Adiciona as dependências que o Maven conseguiu baixar (se houver)
           [ -n "$DEP_CP" ] && FULL_CP="${FULL_CP}:${DEP_CP}"
 
-          java -Xmx2G -Xss32m -cp "$FULL_CP" org.rascalmpl.shell.RascalShell "$MAIN_MODULE" 2>&1 | tee audit_output.txt
-
-          echo "=== Classpath ==="
-          echo "$FULL_CP" | tr ':' '\n'
-          echo "================="
-
-          java \
-            -Xmx2G \
-            -Xss32m \
+          echo "Iniciando auditoria independente do Maven..."
+          java -Xmx2G -Xss32m \
             -cp "$FULL_CP" \
             org.rascalmpl.shell.RascalShell \
-            "$MAIN_MODULE" \
-            2>&1 | tee audit_output.txt || true
-          # "|| true" prevents pipeline abort — we inspect the output ourselves
-
-          echo "--- audit_output.txt preview ---"
-          head -40 audit_output.txt
+            "$MAIN_MODULE" 2>&1 | tee audit_output.txt || true
 
       # Upload ALWAYS (even on failure) — file always exists due to `touch` above
       - name: Upload audit report
