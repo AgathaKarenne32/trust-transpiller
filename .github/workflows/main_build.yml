@@ -68,9 +68,12 @@ jobs:
         run: |
           mvn --batch-mode --no-transfer-progress \
               dependency:copy-dependencies \
-                -DoutputDirectory=target/dependency \
+              -DoutputDirectory=target/dependency \
               compile \
-              -Dmaven.compiler.failOnError=false
+              -Dmaven.compiler.failOnError=false \
+              -Dmaven.wagon.http.ssl.insecure=true \
+              -Dmaven.wagon.http.ssl.allowall=true \
+              -Dmaven.wagon.http.ssl.ignore.validity.dates=true
 
       - name: Run Trust-Transpiler static audit
         id: run_audit
@@ -81,8 +84,11 @@ jobs:
 
           DEP_CP=$(find target/dependency -name "*.jar" 2>/dev/null \
                    | sort | tr '\n' ':' | sed 's/:$//')
-          FULL_CP="${RASCAL_JAR}:target/classes:src"
+          FULL_CP="${{ env.RASCAL_JAR }}:src"
+          # Adiciona as dependências que o Maven conseguiu baixar (se houver)
           [ -n "$DEP_CP" ] && FULL_CP="${FULL_CP}:${DEP_CP}"
+
+          java -Xmx2G -Xss32m -cp "$FULL_CP" org.rascalmpl.shell.RascalShell "$MAIN_MODULE" 2>&1 | tee audit_output.txt
 
           echo "=== Classpath ==="
           echo "$FULL_CP" | tr ':' '\n'
