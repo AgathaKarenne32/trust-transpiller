@@ -168,7 +168,7 @@ jobs:
           while IFS= read -r -d '' rsc_file; do
             rel="${rsc_file#src/}"
             expected_mod="${rel%.rsc}"
-            expected_mod="${expected_mod//\//:}"   # /  →  ::
+            expected_mod="${expected_mod//\//::}"   # /  →  ::
             declared=$(grep -m1 "^module " "$rsc_file" \
                        | sed 's/^module //' | tr -d ' \r')
             if [ -z "$declared" ]; then
