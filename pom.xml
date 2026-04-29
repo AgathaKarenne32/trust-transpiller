@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>org.trust-transpiler</groupId>
+  <artifactId>trust-transpiler</artifactId>
+  <version>0.1.0</version>
+  <packaging>jar</packaging>
+
+  <name>Trust-Transpiler</name>
+  <description>Universal Static Security Auditor — Taint Analysis in Rascal MPL</description>
+
+  <properties>
+    <maven.compiler.source>17</maven.compiler.source>
+    <maven.compiler.target>17</maven.compiler.target>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!-- Rascal version that matches the stable shell JAR -->
+    <rascal.version>0.42.0</rascal.version>
+  </properties>
+
+  <repositories>
+    <repository>
+      <id>rascal-releases</id>
+      <url>https://nexus.usethesource.io/content/repositories/releases/</url>
+    </repository>
+    <repository>
+      <id>rascal-snapshots</id>
+      <url>https://nexus.usethesource.io/content/repositories/snapshots/</url>
+    </repository>
+  </repositories>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.rascalmpl</groupId>
+      <artifactId>rascal</artifactId>
+      <version>${rascal.version}</version>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <sourceDirectory>src</sourceDirectory>
+
+    <resources>
+      <resource>
+        <!-- Include .rsc files and the manifest on the classpath -->
+        <directory>src</directory>
+        <includes>
+          <include>**/*.rsc</include>
+        </includes>
+      </resource>
+      <resource>
+        <!-- META-INF/RASCAL.MF must be on the classpath root -->
+        <directory>${project.basedir}</directory>
+        <includes>
+          <include>META-INF/RASCAL.MF</include>
+        </includes>
+      </resource>
+    </resources>
+
+    <plugins>
+      <!-- Copy META-INF/RASCAL.MF into target/classes so the shell finds it -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <version>3.3.1</version>
+        <executions>
+          <execution>
+            <id>copy-rascal-mf</id>
+            <phase>process-resources</phase>
+            <goals><goal>copy-resources</goal></goals>
+            <configuration>
+              <outputDirectory>${project.build.outputDirectory}/META-INF</outputDirectory>
+              <resources>
+                <resource>
+                  <directory>${project.basedir}/META-INF</directory>
+                  <includes><include>RASCAL.MF</include></includes>
+                </resource>
+              </resources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+      </plugin>
+    </plugins>
+  </build>
+</project>
