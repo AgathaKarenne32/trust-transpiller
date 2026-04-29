@@ -65,15 +65,18 @@ jobs:
           fi
 
       - name: Maven compile + resolve dependencies
+        env:
+          # FORÇA O JAVA A ACEITAR QUALQUER CERTIFICADO DURANTE O MAVEN
+          MAVEN_OPTS: "-Dmaven.wagon.http.ssl.insecure=true -Dmaven.wagon.http.ssl.allowall=true -Dmaven.wagon.http.ssl.ignore.validity.dates=true"
         run: |
+          # Adicionamos também as flags de "insecure" diretamente no comando para redundância
           mvn --batch-mode --no-transfer-progress \
               dependency:copy-dependencies \
               -DoutputDirectory=target/dependency \
               compile \
               -Dmaven.compiler.failOnError=false \
               -Dmaven.wagon.http.ssl.insecure=true \
-              -Dmaven.wagon.http.ssl.allowall=true \
-              -Dmaven.wagon.http.ssl.ignore.validity.dates=true
+              -Dmaven.wagon.http.ssl.allowall=true
 
       - name: Run Trust-Transpiler static audit
         id: run_audit
