@@ -3,9 +3,6 @@ module analysis::CFG
 // ============================================================
 //  Trust-Transpiler — Control Flow Graph Builder
 //  analysis::CFG
-//
-//  Converts a UIRProc (list of BasicBlocks) into an explicit
-//  CFG and provides interprocedural call-graph support.
 // ============================================================
 
 import lang::universal::IR;
@@ -24,20 +21,19 @@ data CFGNode
   | instrNode(str procName, str blockLabel, int instrIndex, UIRInstr instr)
   ;
 
-// A labelled directed edge
 alias CFGEdge = tuple[CFGNode from, CFGNode to, EdgeKind kind];
 
 data EdgeKind
-  = flowEdge()       // normal sequential flow
-  | trueEdge()       // conditional — taken when condition is true
-  | falseEdge()      // conditional — taken when condition is false
-  | callEdge()       // call site → callee entry
-  | returnEdge()     // callee exit → call-site successor
-  | exceptionEdge()  // throw → catch handler
+  = flowEdge()
+  | trueEdge()
+  | falseEdge()
+  | callEdge()
+  | returnEdge()
+  | exceptionEdge()
   ;
 
 // ------------------------------------------------------------------
-// 2. Intra-procedural CFG for a single UIRProc
+// 2. Intra-procedural CFG
 // ------------------------------------------------------------------
 
 data ProcCFG = procCFG(
@@ -46,13 +42,13 @@ data ProcCFG = procCFG(
   CFGNode exitNode,
   set[CFGNode] nodes,
   set[CFGEdge] edges,
-  map[str, BasicBlock] blockIndex,   // label → block
-  map[CFGNode, set[CFGNode]] pred,   // predecessor map
-  map[CFGNode, set[CFGNode]] succ    // successor map
+  map[str, BasicBlock] blockIndex,
+  map[CFGNode, set[CFGNode]] pred,
+  map[CFGNode, set[CFGNode]] succ
 );
 
 // ------------------------------------------------------------------
-// 3. Build intra-procedural CFG from a UIRProc
+// 3. Build intra-procedural CFG
 // ------------------------------------------------------------------
 
 ProcCFG buildProcCFG(UIRProc p) {
@@ -67,12 +63,13 @@ ProcCFG buildProcCFG(UIRProc p) {
   map[str, BasicBlock] blkIdx = ( b.label : b | b <- p.blocks );
 
   // --- Build instruction nodes for each block ----------------
-  // Map: blockLabel → ordered list of CFGNodes for its instrs
+  // FIX: usar index(list) em vez de [0 .. size(x)] para evitar
+  //      acesso fora do range (Rascal: index/1 retorna [0..size-1])
   map[str, list[CFGNode]] blockNodes = ();
 
   for (BasicBlock blk <- p.blocks) {
     list[CFGNode] bns = [];
-    for (int idx <- [0 .. size(blk.instrs)]) {
+    for (int idx <- index(blk.instrs)) {
       CFGNode n = instrNode(pname, blk.label, idx, blk.instrs[idx]);
       nodes += {n};
       bns   += [n];
@@ -83,6 +80,7 @@ ProcCFG buildProcCFG(UIRProc p) {
   // --- Sequential edges within each block -------------------
   for (BasicBlock blk <- p.blocks) {
     list[CFGNode] bns = blockNodes[blk.label];
+    // FIX: [0 .. size(bns) - 1] — correto para pares consecutivos
     for (int idx <- [0 .. size(bns) - 1]) {
       edges += {<bns[idx], bns[idx + 1], flowEdge()>};
     }
@@ -105,33 +103,30 @@ ProcCFG buildProcCFG(UIRProc p) {
     list[CFGNode] bns = blockNodes[blk.label];
     if (isEmpty(bns)) continue;
 
-    CFGNode lastN = bns[size(bns) - 1];
+    CFGNode lastN  = bns[size(bns) - 1];
     UIRInstr lastI = blk.instrs[size(blk.instrs) - 1];
 
     switch (lastI) {
       case iJump(lbl): {
-        if (lbl in blockNodes) {
+        if (lbl in blockNodes && !isEmpty(blockNodes[lbl]))
           edges += {<lastN, blockNodes[lbl][0], flowEdge()>};
-        }
       }
       case iCondJump(_, tLbl, fLbl): {
-        if (tLbl in blockNodes)
+        if (tLbl in blockNodes && !isEmpty(blockNodes[tLbl]))
           edges += {<lastN, blockNodes[tLbl][0], trueEdge()>};
-        if (fLbl in blockNodes)
+        if (fLbl in blockNodes && !isEmpty(blockNodes[fLbl]))
           edges += {<lastN, blockNodes[fLbl][0], falseEdge()>};
       }
       case iReturn(_, _): {
         edges += {<lastN, exitN, flowEdge()>};
       }
       case iThrow(_): {
-        // Conservative: connect throws to exit (handler wiring done below)
         edges += {<lastN, exitN, exceptionEdge()>};
       }
       default: {
-        // Fall through to next block if defined in successor list
-        for (str succ <- blk.successors) {
-          if (succ in blockNodes && !isEmpty(blockNodes[succ])) {
-            edges += {<lastN, blockNodes[succ][0], flowEdge()>};
+        for (str succLbl <- blk.successors) {
+          if (succLbl in blockNodes && !isEmpty(blockNodes[succLbl])) {
+            edges += {<lastN, blockNodes[succLbl][0], flowEdge()>};
           }
         }
       }
@@ -140,7 +135,7 @@ ProcCFG buildProcCFG(UIRProc p) {
 
   // --- Wire iCatch handlers ---------------------------------
   for (BasicBlock blk <- p.blocks) {
-    for (int idx <- [0 .. size(blk.instrs)]) {
+    for (int idx <- index(blk.instrs)) {
       if (iCatch(_, _, hLbl) := blk.instrs[idx]) {
         CFGNode catchNode = instrNode(pname, blk.label, idx, blk.instrs[idx]);
         if (hLbl in blockNodes && !isEmpty(blockNodes[hLbl])) {
@@ -150,58 +145,43 @@ ProcCFG buildProcCFG(UIRProc p) {
     }
   }
 
-  // --- Build pred / succ maps from edge set -----------------
-  map[CFGNode, set[CFGNode]] succMap = ();
-  map[CFGNode, set[CFGNode]] predMap = ();
+  // --- Build pred / succ maps -------------------------------
+  map[CFGNode, set[CFGNode]] succMap = ( n : {} | n <- nodes );
+  map[CFGNode, set[CFGNode]] predMap = ( n : {} | n <- nodes );
 
-  for (CFGNode n <- nodes) {
-    succMap[n] = {};
-    predMap[n] = {};
-  }
   for (<CFGNode f, CFGNode t, _> <- edges) {
     succMap[f] = (f in succMap ? succMap[f] : {}) + {t};
     predMap[t] = (t in predMap ? predMap[t] : {}) + {f};
   }
 
-  return procCFG(
-    pname,
-    entryN,
-    exitN,
-    nodes,
-    edges,
-    blkIdx,
-    predMap,
-    succMap
-  );
+  return procCFG(pname, entryN, exitN, nodes, edges, blkIdx, predMap, succMap);
 }
 
 // ------------------------------------------------------------------
-// 4. Program-level (interprocedural) call graph
+// 4. Call graph
 // ------------------------------------------------------------------
 
 data CallGraph = callGraph(
-  set[str] procs,                      // all procedure names
-  rel[str caller, str callee] calls,   // direct call edges
-  map[str, ProcCFG] cfgs               // per-proc CFG
+  set[str] procs,
+  rel[str caller, str callee] calls,
+  map[str, ProcCFG] cfgs
 );
 
 CallGraph buildCallGraph(UIRUnit u) {
-  set[str] allProcs = { p.name | p <- u.procs };
-  rel[str, str] callRel = {};
+  set[str] allProcs      = { p.name | p <- u.procs };
+  rel[str, str] callRel  = {};
   map[str, ProcCFG] cfgMap = ();
 
   for (UIRProc p <- u.procs) {
     ProcCFG pcfg = buildProcCFG(p);
     cfgMap[p.name] = pcfg;
 
-    // Detect direct calls in every instruction
     for (BasicBlock blk <- p.blocks) {
       for (UIRInstr i <- blk.instrs) {
         switch (i) {
           case iCall(_, callee, _, _):
             callRel += {<p.name, callee>};
           case iMethodCall(_, _, method, _, _):
-            // Record as  caller → "receiver.method" (approximation)
             callRel += {<p.name, method>};
           default: ;
         }
@@ -213,15 +193,12 @@ CallGraph buildCallGraph(UIRUnit u) {
 }
 
 // ------------------------------------------------------------------
-// 5. Dominance helpers (simple iterative algorithm)
+// 5. Dominance (iterative)
 // ------------------------------------------------------------------
 
-// Returns the set of nodes dominated by `n` in a proc CFG.
-// dom(n) = {n} ∪ (∩ dom(p) for p in pred(n))
 map[CFGNode, set[CFGNode]] computeDominators(ProcCFG cfg) {
   map[CFGNode, set[CFGNode]] dom = ();
 
-  // Initialise: entry dominates only itself; rest dominate everything
   dom[cfg.entryNode] = {cfg.entryNode};
   for (CFGNode n <- cfg.nodes) {
     if (n != cfg.entryNode) dom[n] = cfg.nodes;
@@ -233,21 +210,19 @@ map[CFGNode, set[CFGNode]] computeDominators(ProcCFG cfg) {
     for (CFGNode n <- cfg.nodes) {
       if (n == cfg.entryNode) continue;
 
-      set[CFGNode] preds = cfg.pred[n] ? {};
+      set[CFGNode] preds  = cfg.pred[n] ? {};
       set[CFGNode] newDom;
 
       if (isEmpty(preds)) {
         newDom = {n};
       } else {
         newDom = cfg.nodes;
-        for (CFGNode p <- preds) {
-          newDom = newDom & dom[p];
-        }
+        for (CFGNode pred <- preds) newDom = newDom & dom[pred];
         newDom += {n};
       }
 
       if (newDom != dom[n]) {
-        dom[n] = newDom;
+        dom[n]  = newDom;
         changed = true;
       }
     }
@@ -256,23 +231,23 @@ map[CFGNode, set[CFGNode]] computeDominators(ProcCFG cfg) {
 }
 
 // ------------------------------------------------------------------
-// 6. Reachability query (BFS over CFG edges)
+// 6. Reachability (BFS)
 // ------------------------------------------------------------------
 
 bool isReachable(CFGNode src, CFGNode tgt, ProcCFG cfg) {
   if (src == tgt) return true;
 
-  set[CFGNode] visited = {src};
+  set[CFGNode]  visited  = {src};
   list[CFGNode] worklist = [src];
 
   while (!isEmpty(worklist)) {
     CFGNode cur = worklist[0];
-    worklist = worklist[1..];
+    worklist    = worklist[1..];
 
     for (CFGNode nxt <- (cfg.succ[cur] ? {})) {
-      if (nxt == tgt) return true;
+      if (nxt == tgt)           return true;
       if (nxt notin visited) {
-        visited += {nxt};
+        visited  += {nxt};
         worklist += [nxt];
       }
     }
@@ -281,7 +256,7 @@ bool isReachable(CFGNode src, CFGNode tgt, ProcCFG cfg) {
 }
 
 // ------------------------------------------------------------------
-// 7. Pretty-printer (DOT format) for debugging
+// 7. DOT pretty-printer
 // ------------------------------------------------------------------
 
 str toDot(ProcCFG cfg) {
@@ -290,7 +265,7 @@ str toDot(ProcCFG cfg) {
   dot += "  node [shape=box fontname=\"Courier\" fontsize=9];\n";
 
   for (CFGNode n <- cfg.nodes) {
-    str lbl = nodeDotLabel(n);
+    str lbl   = nodeDotLabel(n);
     str shape = (n == cfg.entryNode || n == cfg.exitNode) ? "ellipse" : "box";
     dot += "  \"<nodeDotId(n)>\" [label=\"<lbl>\" shape=<shape>];\n";
   }
@@ -306,38 +281,40 @@ str toDot(ProcCFG cfg) {
 
 private str nodeDotId(CFGNode n) {
   switch (n) {
-    case entry(p):              return "entry_<p>";
-    case exit(p):               return "exit_<p>";
-    case instrNode(p, b, i, _): return "<p>_<b>_<i>";
+    case entry(p):               return "entry_<p>";
+    case exit(p):                return "exit_<p>";
+    case instrNode(p, b, i, _):  return "<p>_<b>_<i>";
+    default:                     return "unknown";
   }
 }
 
 private str nodeDotLabel(CFGNode n) {
   switch (n) {
-    case entry(p):              return "ENTRY\\n<p>";
-    case exit(p):               return "EXIT\\n<p>";
-    case instrNode(_, b, i, instr): return "<b>[<i>]\\n<instrShortName(instr)>";
+    case entry(p):                    return "ENTRY\\n<p>";
+    case exit(p):                     return "EXIT\\n<p>";
+    case instrNode(_, b, i, instr):   return "<b>[<i>]\\n<instrShortName(instr)>";
+    default:                          return "?";
   }
 }
 
 private str instrShortName(UIRInstr i) {
   switch (i) {
-    case iAssign(d, _, _):       return "ASSIGN <d>";
-    case iCall(d, c, _, _):      return "CALL <c> -\> <d>";
-    case iMethodCall(d, _, m, _, _): return "MCALL .<m> -\> <d>";
-    case iReturn(_, _):          return "RETURN";
-    case iStore(_, _, _):        return "STORE";
-    case iLoad(d, _, _):         return "LOAD -\> <d>";
-    case iJump(l):               return "JUMP <l>";
-    case iCondJump(_, t, f):     return "BRANCH T:<t> F:<f>";
-    case iLabel(l):              return "LABEL <l>";
-    case iThrow(_):              return "THROW";
-    case iCatch(v, _, h):        return "CATCH <v> @ <h>";
-    case iNop():                 return "NOP";
-    case iComment(t):            return "// <t>";
-    case iEnterScope(n):         return "ENTER <n>";
-    case iExitScope(n):          return "EXIT <n>";
-    default:                     return "INSTR";
+    case iAssign(d, _, _):            return "ASSIGN <d>";
+    case iCall(d, c, _, _):           return "CALL <c> -\> <d>";
+    case iMethodCall(d, _, m, _, _):  return "MCALL .<m> -\> <d>";
+    case iReturn(_, _):               return "RETURN";
+    case iStore(_, _, _):             return "STORE";
+    case iLoad(d, _, _):              return "LOAD -\> <d>";
+    case iJump(l):                    return "JUMP <l>";
+    case iCondJump(_, t, f):          return "BRANCH T:<t> F:<f>";
+    case iLabel(l):                   return "LABEL <l>";
+    case iThrow(_):                   return "THROW";
+    case iCatch(v, _, h):             return "CATCH <v> @ <h>";
+    case iNop():                      return "NOP";
+    case iComment(t):                 return "// <t>";
+    case iEnterScope(sn):             return "ENTER <sn>";
+    case iExitScope(sn):              return "EXIT <sn>";
+    default:                          return "INSTR";
   }
 }
 
