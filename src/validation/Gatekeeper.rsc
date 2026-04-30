@@ -64,8 +64,8 @@ TaintEnv joinEnv(TaintEnv a, TaintEnv b) {
 
 bool envLeq(TaintEnv a, TaintEnv b) {
   for (str v <- a) {
-    if (v notin b) return false;
-    if (!(a[v] <= b[v])) return false;
+    if (v notin b)        return false;
+    if (!(a[v] <= b[v]))  return false;
   }
   return true;
 }
@@ -84,48 +84,48 @@ tuple[TaintEnv, list[VulnReport]] transferInstr(
   list[VulnReport] reports = [];
 
   switch (instr) {
-    case iAssign(dest, src, Source(cat, origin, _)): {
+    case iAssign(str dest, UIRValue src, Source(str cat, str origin, _)): {
       set[str] srcTaint = taintOfValue(src, env);
       env[dest] = srcTaint + {cat};
       return <env, reports>;
     }
 
-    case iCall(dest, _, _, Source(cat, _, propagates)): {
+    case iCall(str dest, str _, list[UIRValue] _, Source(str cat, str _, set[str] propagates)): {
       for (str v <- propagates) env[v] = {cat};
       if (dest != "") env[dest] = {cat};
       return <env, reports>;
     }
 
-    case iAssign(dest, _, Sanitizer(cat, _, cleaned)): {
+    case iAssign(str dest, UIRValue _, Sanitizer(str cat, str _, set[str] cleaned)): {
       for (str v <- cleaned + {dest}) {
         if (v in env) {
-            env[v] = env[v] - {cat};
-            if (isEmpty(env[v])) env = delete(env, v);
+          env[v] = env[v] - {cat};
+          if (isEmpty(env[v])) env = delete(env, v);
         }
       }
       return <env, reports>;
     }
 
-    case iCall(_, _, args, Sink(sinkCat, sinkTarget, required)): {
+    case iCall(str _, str _, list[UIRValue] args, Sink(str sinkCat, str sinkTarget, set[str] required)): {
       for (UIRValue arg <- args) {
         set[str] argTaint = taintOfValue(arg, env);
         if (!isEmpty(argTaint)) {
           list[str] missing = [ r | r <- toList(required), r notin argTaint ];
-          reports += [buildReport(sinkCat, procName, blockLabel, instrIdx, 
+          reports += [buildReport(sinkCat, procName, blockLabel, instrIdx,
                       intercalate(",", toList(argTaint)), sinkTarget, valueStr(arg), missing)];
         }
       }
       return <env, reports>;
     }
 
-    case iAssign(dest, src, _): {
+    case iAssign(str dest, UIRValue src, _): {
       set[str] srcTaint = taintOfValue(src, env);
       if (!isEmpty(srcTaint)) env[dest] = srcTaint;
       else env = delete(env, dest);
       return <env, reports>;
     }
 
-    case iLoad(dest, src, _): {
+    case iLoad(str dest, UIRValue src, _): {
       set[str] srcTaint = taintOfValue(src, env);
       if (!isEmpty(srcTaint)) env[dest] = srcTaint;
       return <env, reports>;
@@ -141,9 +141,11 @@ tuple[TaintEnv, list[VulnReport]] transferInstr(
 
 set[str] taintOfValue(UIRValue v, TaintEnv env) {
   switch (v) {
-    case valVar(name, _): return (env[name] ? {});
-    case valBinOp(_, l, r): return taintOfValue(l, env) + taintOfValue(r, env);
-    case valPhi(branches): return ( {} | it + taintOfValue(b.val, env) | b <- branches );
+    case valVar(str name, _): return (env[name] ? {});
+    case valBinOp(_, UIRValue l, UIRValue r):
+        return taintOfValue(l, env) + taintOfValue(r, env);
+    case valPhi(list[tuple[UIRValue val, str predLabel]] branches):
+        return ( {} | it + taintOfValue(b.val, env) | b <- branches );
     default: return {};
   }
 }
@@ -152,33 +154,34 @@ set[str] taintOfValue(UIRValue v, TaintEnv env) {
 // 5. Intra-procedural fixed-point dataflow
 // ------------------------------------------------------------------
 
+// FIX: declarar os tipos das variáveis retornadas por analyseProc
+//      explicitamente para evitar ambiguidade no pattern matching
 tuple[map[CFGNode, TaintEnv], list[VulnReport]]
     analyseProc(UIRProc p, ProcCFG cfg, TaintEnv initialEnv) {
 
-  map[CFGNode, TaintEnv] inEnv  = ();
-  map[CFGNode, TaintEnv] outEnv = ();
+  map[CFGNode, TaintEnv] inEnv  = ( n : () | n <- cfg.nodes );
+  map[CFGNode, TaintEnv] outEnv = ( n : () | n <- cfg.nodes );
   list[VulnReport] allReports   = [];
 
-  for (CFGNode n <- cfg.nodes) {
-    inEnv[n]  = ();
-    outEnv[n] = ();
-  }
   inEnv[cfg.entryNode] = initialEnv;
 
-  list[CFGNode] worklist = [cfg.entryNode];
-  set[CFGNode] inWorklist = {cfg.entryNode};
+  list[CFGNode]  worklist   = [cfg.entryNode];
+  set[CFGNode]   inWorklist = {cfg.entryNode};
 
   while (!isEmpty(worklist)) {
-    CFGNode cur = worklist[0];
-    worklist = worklist[1..];
-    inWorklist -= {cur};
+    CFGNode cur  = worklist[0];
+    worklist     = worklist[1..];
+    inWorklist  -= {cur};
 
-    TaintEnv curIn = inEnv[cur];
+    TaintEnv curIn  = inEnv[cur];
     TaintEnv curOut = curIn;
-    
-    if (instrNode(pname, blabel, idx, instr) := cur) {
-        <curOut, nodeReports> = transferInstr(instr, curIn, pname, blabel, idx);
-        allReports += nodeReports;
+
+    if (instrNode(str pname, str blabel, int idx, UIRInstr instr) := cur) {
+      // FIX: declarar variáveis do resultado explicitamente
+      tuple[TaintEnv env, list[VulnReport] reps] res =
+          transferInstr(instr, curIn, pname, blabel, idx);
+      curOut      = res.env;
+      allReports += res.reps;
     }
 
     outEnv[cur] = curOut;
@@ -188,7 +191,7 @@ tuple[map[CFGNode, TaintEnv], list[VulnReport]]
       if (!envLeq(newIn, inEnv[succ])) {
         inEnv[succ] = newIn;
         if (succ notin inWorklist) {
-          worklist += [succ];
+          worklist   += [succ];
           inWorklist += {succ};
         }
       }
@@ -210,12 +213,14 @@ AuditResult auditUnit(UIRUnit u, CallGraph cg) {
 
     TaintEnv initEnv = ();
     for (str pName <- p.paramTags) {
-      if (Source(cat, _, _) := p.paramTags[pName]) initEnv[pName] = {cat};
+      if (Source(str cat, _, _) := p.paramTags[pName]) initEnv[pName] = {cat};
     }
 
     if (p.name in cg.cfgs) {
-        <_, vulns> = analyseProc(p, cg.cfgs[p.name], initEnv);
-        allVulns += vulns;
+      // FIX: usar variáveis tipadas ao receber o resultado da análise
+      tuple[map[CFGNode, TaintEnv] envs, list[VulnReport] vulns] r =
+          analyseProc(p, cg.cfgs[p.name], initEnv);
+      allVulns += r.vulns;
     }
   }
 
@@ -226,31 +231,33 @@ AuditResult auditUnit(UIRUnit u, CallGraph cg) {
 // 7. Factory e Helpers
 // ------------------------------------------------------------------
 
-VulnReport buildReport(str sinkCat, str procName, str blockLabel, int instrIdx, 
+VulnReport buildReport(str sinkCat, str procName, str blockLabel, int instrIdx,
                        str origins, str sinkTarget, str taintedVar, list[str] missing) {
-  <kind, sev> = classifySink(sinkCat);
+  // FIX: declarar variáveis explicitamente ao usar tuple destructuring
+  tuple[VulnKind kind, Severity sev] cls = classifySink(sinkCat);
   str msg = "Unsanitised <sinkCat> taint from [<origins>] reaches `<sinkTarget>`";
-  return vuln(kind, sev, procName, blockLabel, instrIdx, origins, sinkTarget, taintedVar, missing, msg);
+  return vuln(cls.kind, cls.sev, procName, blockLabel, instrIdx,
+              origins, sinkTarget, taintedVar, missing, msg);
 }
 
 tuple[VulnKind, Severity] classifySink(str cat) {
   switch (cat) {
-    case "SQL_EXEC": return <sqlInjection(), critical()>;
-    case "HTML_OUTPUT": return <xss(), high()>;
-    case "SHELL_EXEC": return <shellInjection(), critical()>;
-    default: return <genericTaint(cat), medium()>;
+    case "SQL_EXEC":    return <sqlInjection(),  critical()>;
+    case "HTML_OUTPUT": return <xss(),           high()>;
+    case "SHELL_EXEC":  return <shellInjection(), critical()>;
+    default:            return <genericTaint(cat), medium()>;
   }
 }
 
 str formatReport(AuditResult ar) {
   str out = "TRUST-TRANSPILER AUDIT REPORT\nFile: <ar.sourceFile>\nStatus: <ar.clean ? "CLEAN" : "VULNERABLE">\n";
   for (VulnReport v <- ar.vulnerabilities) {
-      out += "[<v.severity>] <v.kind> in <v.procName> (Block: <v.blockLabel>)\n";
+    out += "[<v.severity>] <v.kind> in <v.procName> (Block: <v.blockLabel>)\n";
   }
   return out;
 }
 
 private str valueStr(UIRValue v) {
-  if (valVar(n, _) := v) return n;
+  if (valVar(str n, _) := v) return n;
   return "expr";
 }
