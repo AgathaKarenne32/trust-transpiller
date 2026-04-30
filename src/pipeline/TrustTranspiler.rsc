@@ -15,11 +15,11 @@ import Set;
 // 1. Demo fixtures
 // ------------------------------------------------------------------
 
-// FIX: Rascal não aceita () como literal de map — é necessário declarar
-//      a variável com tipo explícito antes de usar como argumento.
+// FIX: UIRProc.params is now list[tuple[str, UIRType]] (anonymous tuples)
+//      to match the corrected IR.rsc definition.
 
 UIRUnit sqlInjectionDemo() {
-  map[str, SecurityTag] noTags   = ();
+  map[str, SecurityTag] noTags    = ();
   map[str, UIRType]     noGlobals = ();
 
   UIRProc fetchUser = proc(
@@ -173,7 +173,6 @@ AuditResult runPipeline(UIRUnit u) {
 
 // ------------------------------------------------------------------
 // 3. Main entry point
-//    FIX: assinatura sem parâmetros — o runner Rascal chama main()
 // ------------------------------------------------------------------
 
 void main() {
