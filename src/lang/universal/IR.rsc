@@ -72,13 +72,17 @@ data UIRInstr
   | iComment(str text)
   | iEnterScope(str name)
   | iExitScope(str name)
-  ;
+  ; 
 
 // ------------------------------------------------------------------
 // 5. Estruturas de Dados
 // ------------------------------------------------------------------
 
-data BasicBlock = block(str label, list[UIRInstr] instrs, list[str] successors);
+data BasicBlock = block(
+  str label,
+  list[UIRInstr] instrs,
+  list[str] successors
+); 
 
 data UIRProc = proc(
   str name, 
