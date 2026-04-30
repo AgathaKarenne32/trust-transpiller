@@ -2,7 +2,6 @@ module lang::universal::IR
 
 // ============================================================
 // Trust-Transpiler — Universal Intermediate Representation
-// Referência: agathakarenne32/trust-transpiler
 // ============================================================
 
 // ------------------------------------------------------------------
@@ -25,6 +24,8 @@ data UIRType
 // 2. Value expressions (pure, side-effect free)
 // ------------------------------------------------------------------
 
+// FIX: valPhi cannot use named tuple fields inside a data constructor
+//      argument type. Use anonymous tuple[UIRValue, str] instead.
 data UIRValue
   = valInt(int n)
   | valFloat(real r)
@@ -37,7 +38,7 @@ data UIRValue
   | valBinOp(str op, UIRValue lhs, UIRValue rhs)
   | valUnOp(str op, UIRValue operand)
   | valCast(UIRType target, UIRValue src)
-  | valPhi(list[tuple[UIRValue val, str predLabel]] branches)
+  | valPhi(list[tuple[UIRValue, str]] branches)
   ;
 
 // ------------------------------------------------------------------
@@ -72,73 +73,75 @@ data UIRInstr
   | iComment(str text)
   | iEnterScope(str name)
   | iExitScope(str name)
-  ; 
+  ;
 
 // ------------------------------------------------------------------
-// 5. Estruturas de Dados
+// 5. Data structures
 // ------------------------------------------------------------------
 
 data BasicBlock = block(
   str label,
   list[UIRInstr] instrs,
   list[str] successors
-); 
+);
 
 data UIRProc = proc(
-  str name, 
-  list[tuple[str paramName, UIRType paramType]] params, 
-  UIRType returnType, 
-  list[BasicBlock] blocks, 
+  str name,
+  list[tuple[str, UIRType]] params,
+  UIRType returnType,
+  list[BasicBlock] blocks,
   map[str, SecurityTag] paramTags
 );
 
 data UIRUnit = unit(
-  str sourceFile, 
-  str sourceLanguage, 
-  list[UIRProc] procs, 
+  str sourceFile,
+  str sourceLanguage,
+  list[UIRProc] procs,
   map[str, UIRType] globals
 );
 
 // ------------------------------------------------------------------
-// 8. Helpers
+// 6. Helpers
 // ------------------------------------------------------------------
 
 SecurityTag getTag(UIRInstr i) {
-    switch (i) {
-        case iAssign(_, _, SecurityTag t):      return t;
-        case iCall(_, _, _, SecurityTag t):     return t;
-        case iMethodCall(_, _, _, _, SecurityTag t): return t;
-        case iReturn(_, SecurityTag t):         return t;
-        case iStore(_, _, SecurityTag t):       return t;
-        case iLoad(_, _, SecurityTag t):        return t;
-        default:                                return Neutral();
-    }
+  switch (i) {
+    case iAssign(_, _, SecurityTag t):           return t;
+    case iCall(_, _, _, SecurityTag t):          return t;
+    case iMethodCall(_, _, _, _, SecurityTag t): return t;
+    case iReturn(_, SecurityTag t):              return t;
+    case iStore(_, _, SecurityTag t):            return t;
+    case iLoad(_, _, SecurityTag t):             return t;
+    default:                                     return Neutral();
+  }
 }
 
-bool isSource(UIRInstr i) = Source(_, _, _) := getTag(i);
-bool isSink(UIRInstr i) = Sink(_, _, _) := getTag(i);
+bool isSource(UIRInstr i)    = Source(_, _, _) := getTag(i);
+bool isSink(UIRInstr i)      = Sink(_, _, _)   := getTag(i);
 bool isSanitizer(UIRInstr i) = Sanitizer(_, _, _) := getTag(i);
 
 str getDest(UIRInstr i) {
-    switch (i) {
-        case iAssign(str d, _, _):        return d;
-        case iCall(str d, _, _, _):       return d;
-        case iMethodCall(str d, _, _, _, _): return d;
-        case iLoad(str d, _, _):          return d;
-        default:                          return "";
-    }
+  switch (i) {
+    case iAssign(str d, _, _):           return d;
+    case iCall(str d, _, _, _):          return d;
+    case iMethodCall(str d, _, _, _, _): return d;
+    case iLoad(str d, _, _):             return d;
+    default:                             return "";
+  }
 }
 
+// FIX: valPhi branches are now tuple[UIRValue, str] (anonymous).
+//      Access positionally: b[0] for the value, b[1] for the label.
 set[str] readsOf(UIRValue v) {
   switch (v) {
-    case valVar(n, _): return {n};
-    case valField(obj, _): return readsOf(obj);
-    case valIndex(a, i): return readsOf(a) + readsOf(i);
-    case valBinOp(_, l, r): return readsOf(l) + readsOf(r);
-    case valUnOp(_, x): return readsOf(x);
-    case valCast(_, s): return readsOf(s);
-    case valPhi(list[tuple[UIRValue val, str predLabel]] branches): 
-        return ( {} | it + readsOf(b.val) | b <- branches );
+    case valVar(str n, _):   return {n};
+    case valField(obj, _):   return readsOf(obj);
+    case valIndex(a, i):     return readsOf(a) + readsOf(i);
+    case valBinOp(_, l, r):  return readsOf(l) + readsOf(r);
+    case valUnOp(_, x):      return readsOf(x);
+    case valCast(_, s):      return readsOf(s);
+    case valPhi(list[tuple[UIRValue, str]] branches):
+      return ( {} | it + readsOf(b[0]) | b <- branches );
     default: return {};
   }
 }
