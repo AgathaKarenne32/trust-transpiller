@@ -15,6 +15,7 @@ env:
 jobs:
   # ----------------------------------------------------------------
   # Job 1 — Static audit
+  # Sem Maven. O rascal-shell-stable.jar é self-contained.
   # ----------------------------------------------------------------
   audit:
     name: Static Security Audit
@@ -24,80 +25,88 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # JDK 17 — necessário para rodar o JAR do Rascal
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
+      # Cache do JAR para não re-baixar a cada run
       - name: Cache Rascal shell JAR
         id: cache-rascal
         uses: actions/cache@v4
         with:
           path: ${{ env.RASCAL_JAR }}
-          key: rascal-shell-stable
+          key: rascal-shell-stable-jar-v1
 
+      # Download direto via curl — sem Maven, sem nexus.usethesource.io
       - name: Download Rascal shell (stable)
         if: steps.cache-rascal.outputs.cache-hit != 'true'
         run: |
-          echo "Downloading Rascal shell …"
+          echo "Downloading Rascal shell via curl …"
           curl -fsSL "$RASCAL_URL" -o "$RASCAL_JAR"
-          echo "Size: $(du -sh $RASCAL_JAR | cut -f1)"
+          echo "Download OK — $(du -sh $RASCAL_JAR | cut -f1)"
 
+      # Sanity-check: confirma que é um JAR válido
       - name: Validate Rascal JAR
         run: |
           [ -f "$RASCAL_JAR" ] || { echo "::error::JAR not found"; exit 1; }
           unzip -t "$RASCAL_JAR" > /dev/null 2>&1 \
-            || { echo "::error::File is not a valid JAR/ZIP"; exit 1; }
+            || { echo "::error::Not a valid JAR/ZIP"; exit 1; }
           echo "JAR OK — $(jar tf $RASCAL_JAR | wc -l) entries"
 
-      - name: Verify META-INF/RASCAL.MF
+      # Verifica estrutura do projeto
+      - name: Verify project structure
         run: |
-          echo "── .rsc source files ─────────────────────"
+          echo "── .rsc source files ──────────────────────"
           find src -name "*.rsc" | sort
           echo ""
-          echo "── META-INF/RASCAL.MF ────────────────────"
+          echo "── META-INF/RASCAL.MF ─────────────────────"
           if [ -f META-INF/RASCAL.MF ]; then
             cat META-INF/RASCAL.MF
           else
-            echo "::error::META-INF/RASCAL.MF is MISSING"
+            echo "::error::META-INF/RASCAL.MF AUSENTE"
             exit 1
           fi
+          echo "───────────────────────────────────────────"
 
-      - name: Maven compile + resolve dependencies
-        env:
-          # FORÇA O JAVA A ACEITAR QUALQUER CERTIFICADO DURANTE O MAVEN
-          MAVEN_OPTS: "-Dmaven.wagon.http.ssl.insecure=true -Dmaven.wagon.http.ssl.allowall=true -Dmaven.wagon.http.ssl.ignore.validity.dates=true"
-        run: |
-          # Adicionamos também as flags de "insecure" diretamente no comando para redundância
-          mvn --batch-mode --no-transfer-progress \
-              dependency:copy-dependencies \
-              -DoutputDirectory=target/dependency \
-              compile \
-              -Dmaven.compiler.failOnError=false \
-              -Dmaven.wagon.http.ssl.insecure=true \
-              -Dmaven.wagon.http.ssl.allowall=true
-              
+      # -------------------------------------------------------
+      # Execução principal — APENAS rascal-shell-stable.jar + src
+      #
+      # O rascal-shell-stable.jar é um "fat JAR" (uber-jar):
+      #   - contém o interpretador Rascal completo
+      #   - contém toda a stdlib (List, Set, Map, IO, …)
+      #   - NÃO precisa de dependências Maven adicionais
+      #
+      # Classpath:
+      #   (1) rascal-shell-stable.jar  — o interpretador
+      #   (2) src                      — os .rsc do projeto
+      #   (3) .                        — raiz do projeto
+      #       (para o Rascal localizar META-INF/RASCAL.MF)
+      # -------------------------------------------------------
       - name: Run Trust-Transpiler static audit
         run: |
-          # 1. Garante que o arquivo de saída exista para o upload não falhar
           touch audit_output.txt
-          
-          # 2. Tenta coletar dependências do Maven (se o passo anterior funcionou parcialmente)
-          DEP_CP=$(find target/dependency -name "*.jar" 2>/dev/null | sort | tr '\n' ':' | sed 's/:$//')
-          
-          # 3. Monta o Classpath usando o código-fonte bruto (src) e o JAR estável baixado via curl
-          # Isso ignora qualquer erro de compilação ou rede do Maven
-          FULL_CP="${{ env.RASCAL_JAR }}:src"
-          [ -n "$DEP_CP" ] && FULL_CP="${FULL_CP}:${DEP_CP}"
 
-          echo "Iniciando auditoria independente do Maven..."
-          java -Xmx2G -Xss32m \
+          FULL_CP="${RASCAL_JAR}:src:."
+
+          echo "=== Classpath ==="
+          echo "$FULL_CP" | tr ':' '\n'
+          echo "================="
+
+          java \
+            -Xmx2G \
+            -Xss32m \
             -cp "$FULL_CP" \
             org.rascalmpl.shell.RascalShell \
-            "$MAIN_MODULE" 2>&1 | tee audit_output.txt || true
+            "$MAIN_MODULE" \
+            2>&1 | tee audit_output.txt || true
 
-      # Upload ALWAYS (even on failure) — file always exists due to `touch` above
+          echo "--- Últimas 20 linhas do output ---"
+          tail -20 audit_output.txt
+
+      # Upload sempre (mesmo em falha) — `touch` garante que o arquivo existe
       - name: Upload audit report
         if: always()
         uses: actions/upload-artifact@v4
@@ -106,35 +115,41 @@ jobs:
           path: audit_output.txt
           retention-days: 30
 
+      # Resumo no GitHub Step Summary
       - name: Parse vulnerability summary
         if: always()
         run: |
           echo "## Trust-Transpiler Audit Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if grep -q "BUILD PASSED" audit_output.txt; then
-            echo "✅ **No vulnerabilities detected.**" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Nenhuma vulnerabilidade detectada.**" >> $GITHUB_STEP_SUMMARY
           elif grep -q "TRUST-TRANSPILER AUDIT REPORT" audit_output.txt; then
-            echo "❌ **Vulnerabilities detected.**" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Vulnerabilidades detectadas.**" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
             grep -E "(CRITICAL|HIGH|MEDIUM|LOW|Sink|Source|Via|Detail)" \
               audit_output.txt >> $GITHUB_STEP_SUMMARY || true
             echo '```' >> $GITHUB_STEP_SUMMARY
           else
-            echo "⚠️ **Rascal shell did not produce a report (check logs).**" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ **Rascal shell não produziu relatório. Verifique os logs.**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            tail -30 audit_output.txt >> $GITHUB_STEP_SUMMARY || true
+            echo '```' >> $GITHUB_STEP_SUMMARY
           fi
 
-      # Fail the job explicitly AFTER uploading artifacts
+      # Falha explícita APÓS salvar os artefatos
       - name: Assert audit completed
         run: |
           if ! grep -q "TRUST-TRANSPILER AUDIT REPORT" audit_output.txt; then
-            echo "::error::Rascal did not produce an audit report. Check the run log above."
+            echo "::error::Rascal não produziu relatório de auditoria."
+            echo "::error::Últimas linhas do output:"
+            tail -20 audit_output.txt >&2
             exit 1
           fi
 
   # ----------------------------------------------------------------
-  # Job 2 — Lint
-  # BUG FIX: use "//" (double colon) as the module separator, not ":"
+  # Job 2 — Lint: valida declarações de módulo vs. paths de arquivo
   # ----------------------------------------------------------------
   lint:
     name: Rascal Source Lint
@@ -151,37 +166,39 @@ jobs:
           [ -f META-INF/RASCAL.MF ] \
             || { echo "::error::META-INF/RASCAL.MF missing!"; exit 1; }
           echo "META-INF/RASCAL.MF ✓"
+          cat META-INF/RASCAL.MF
 
+      # Compara "module foo::bar::Baz" com o path src/foo/bar/Baz.rsc
+      # IMPORTANTE: usa sed 's|/|::|g' — separador DUPLO ::
       - name: Check module declarations match file paths
         run: |
           ERRORS=0
           while IFS= read -r -d '' rsc_file; do
             rel="${rsc_file#src/}"
-            expected_mod="${rel%.rsc}"
-
-            # ✅ FIX: replace "/" with "::" (double colon) — Rascal convention
-            # replaced below
-            # bash workaround: the above replaces "/" with "::" correctly
-            # but let's be explicit and safe:
-            expected_mod=$(echo "$expected_mod" | sed 's|/|::|g')
+            expected_mod=$(echo "${rel%.rsc}" | sed 's|/|::|g')
 
             declared=$(grep -m1 "^module " "$rsc_file" \
                        | sed 's/^module //' | tr -d ' \r')
 
             if [ -z "$declared" ]; then
-              echo "::warning file=$rsc_file::No module declaration"
+              echo "::warning file=$rsc_file::Sem declaração de módulo"
             elif [ "$declared" != "$expected_mod" ]; then
-              echo "::error file=$rsc_file::Mismatch: got='$declared' want='$expected_mod'"
+              echo "::error file=$rsc_file,title=Module mismatch::got='$declared' want='$expected_mod'"
               ERRORS=$((ERRORS + 1))
             else
               echo "  ✓  $declared"
             fi
           done < <(find src -name "*.rsc" -print0)
-          [ $ERRORS -eq 0 ] || exit 1
+
+          if [ $ERRORS -gt 0 ]; then
+            echo ""
+            echo "::error::$ERRORS arquivo(s) com declaração de módulo incorreta."
+            exit 1
+          fi
+          echo "Lint OK ✓"
 
   # ----------------------------------------------------------------
-  # Job 3 — Security gate
-  # BUG FIX: handle missing artifact gracefully
+  # Job 3 — Security gate: bloqueia CRITICAL e HIGH
   # ----------------------------------------------------------------
   security-gate:
     name: Security Gate
@@ -191,8 +208,7 @@ jobs:
 
     steps:
       - name: Download audit report
-        id: download
-        # continue even if artifact is absent (audit crashed)
+        id: dl
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
@@ -200,9 +216,8 @@ jobs:
 
       - name: Enforce zero CRITICAL / HIGH findings
         run: |
-          # If artifact was not downloaded, treat as inconclusive (not a gate pass)
           if [ ! -f audit_output.txt ]; then
-            echo "::error::Audit report not found — audit job likely crashed. Gate FAILED."
+            echo "::error::Relatório de auditoria ausente — job de auditoria crashou."
             exit 1
           fi
 
@@ -213,7 +228,7 @@ jobs:
           echo "High     : $HIGH"
 
           if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
-            echo "::error::Security gate FAILED — $CRITICAL CRITICAL, $HIGH HIGH"
+            echo "::error::Security gate FALHOU — $CRITICAL CRITICAL, $HIGH HIGH"
             exit 1
           fi
-          echo "Security gate PASSED ✓"
+          echo "Security gate PASSOU ✓"
