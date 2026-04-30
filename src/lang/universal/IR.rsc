@@ -172,15 +172,15 @@ data UIRUnit = unit(
 
 // Retrieve the SecurityTag from any instruction (default Neutral)
 SecurityTag getTag(UIRInstr i) {
-  switch (i) {
-    case iAssign(_, _, t):      return t;
-    case iCall(_, _, _, t):     return t;
-    case iMethodCall(_, _, _, _, t): return t;
-    case iReturn(_, t):         return t;
-    case iStore(_, _, t):       return t;
-    case iLoad(_, _, t):        return t;
-    default:                    return Neutral();
-  }
+    switch (i) {
+        case iAssign(_, _, SecurityTag t):      return t;
+        case iCall(_, _, _, SecurityTag t):     return t;
+        case iMethodCall(_, _, _, _, SecurityTag t): return t;
+        case iReturn(_, SecurityTag t):         return t;
+        case iStore(_, _, SecurityTag t):       return t;
+        case iLoad(_, _, SecurityTag t):        return t;
+        default:                                return Neutral();
+    }
 }
 
 // True if the instruction introduces tainted data
@@ -194,13 +194,13 @@ bool isSanitizer(UIRInstr i) = Sanitizer(_, _, _) := getTag(i);
 
 // Extract destination variable name (empty string if none)
 str getDest(UIRInstr i) {
-  switch (i) {
-    case iAssign(d, _, _):        return d;
-    case iCall(d, _, _, _):       return d;
-    case iMethodCall(d, _, _, _, _): return d;
-    case iLoad(d, _, _):          return d;
-    default:                      return "";
-  }
+    switch (i) {
+        case iAssign(str d, _, _):        return d;
+        case iCall(str d, _, _, _):       return d;
+        case iMethodCall(str d, _, _, _, _): return d;
+        case iLoad(str d, _, _):          return d;
+        default:                          return "";
+    }
 }
 
 // Collect all variable names read by a value expression
@@ -212,7 +212,8 @@ set[str] readsOf(UIRValue v) {
     case valBinOp(_, l, r):       return readsOf(l) + readsOf(r);
     case valUnOp(_, x):           return readsOf(x);
     case valCast(_, s):           return readsOf(s);
-    case valPhi(branches):        return ( {} | it + readsOf(b.val) | b <- branches );
+    case valPhi(list[tuple[UIRValue val, str predLabel]] branches): 
+        return ( {} | it + readsOf(b.val) | tuple[UIRValue val, str predLabel] b <- branches );
     default:                      return {};
   }
 }
