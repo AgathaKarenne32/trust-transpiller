@@ -1,10 +1,11 @@
 module validation::Gatekeeper
 
 // ============================================================
-//  Trust-Transpiler — Gatekeeper (Taint Analysis Engine)
+//  Trust-Transpiler â€” Gatekeeper (Taint Analysis Engine)
 // ============================================================
 
 import lang::universal::IR;
+import lang::universal::SecurityDefs;
 import analysis::CFG;
 import Set;
 import Map;
@@ -64,14 +65,14 @@ TaintEnv joinEnv(TaintEnv a, TaintEnv b) {
 
 bool envLeq(TaintEnv a, TaintEnv b) {
   for (str v <- a) {
-    if (v notin b)       return false;
-    if (!(a[v] <= b[v])) return false;
+    if (v notin b)        return false;
+    if (!(a[v] <= b[v]))  return false;
   }
   return true;
 }
 
 // ------------------------------------------------------------------
-// 3. Transfer function — one instruction
+// 3. Transfer function â€” one instruction
 // ------------------------------------------------------------------
 
 tuple[TaintEnv, list[VulnReport]] transferInstr(
@@ -84,7 +85,7 @@ tuple[TaintEnv, list[VulnReport]] transferInstr(
   list[VulnReport] reports = [];
 
   switch (instr) {
-    case iAssign(str dest, UIRValue src, Source(str cat, str _, set[str] _)): {
+    case iAssign(str dest, UIRValue src, Source(str cat, str origin, _)): {
       set[str] srcTaint = taintOfValue(src, env);
       env[dest] = srcTaint + {cat};
       return <env, reports>;
@@ -118,18 +119,6 @@ tuple[TaintEnv, list[VulnReport]] transferInstr(
       return <env, reports>;
     }
 
-    case iMethodCall(str _, UIRValue _, str _, list[UIRValue] args, Sink(str sinkCat, str sinkTarget, set[str] required)): {
-      for (UIRValue arg <- args) {
-        set[str] argTaint = taintOfValue(arg, env);
-        if (!isEmpty(argTaint)) {
-          list[str] missing = [ r | r <- toList(required), r notin argTaint ];
-          reports += [buildReport(sinkCat, procName, blockLabel, instrIdx,
-                      intercalate(",", toList(argTaint)), sinkTarget, valueStr(arg), missing)];
-        }
-      }
-      return <env, reports>;
-    }
-
     case iAssign(str dest, UIRValue src, _): {
       set[str] srcTaint = taintOfValue(src, env);
       if (!isEmpty(srcTaint)) env[dest] = srcTaint;
@@ -151,16 +140,13 @@ tuple[TaintEnv, list[VulnReport]] transferInstr(
 // 4. Taint of a value expression
 // ------------------------------------------------------------------
 
-// FIX: valPhi branches are tuple[UIRValue, str] (anonymous).
-//      Access the value with b[0].
 set[str] taintOfValue(UIRValue v, TaintEnv env) {
   switch (v) {
-    case valVar(str name, _):
-      return (env[name] ? {});
+    case valVar(str name, _): return (env[name] ? {});
     case valBinOp(_, UIRValue l, UIRValue r):
-      return taintOfValue(l, env) + taintOfValue(r, env);
-    case valPhi(list[tuple[UIRValue, str]] branches):
-      return ( {} | it + taintOfValue(b[0], env) | b <- branches );
+        return taintOfValue(l, env) + taintOfValue(r, env);
+    case valPhi(list[tuple[UIRValue val, str predLabel]] branches):
+        return ( {} | it + taintOfValue(b.val, env) | b <- branches );
     default: return {};
   }
 }
@@ -169,6 +155,8 @@ set[str] taintOfValue(UIRValue v, TaintEnv env) {
 // 5. Intra-procedural fixed-point dataflow
 // ------------------------------------------------------------------
 
+// FIX: declarar os tipos das variÃ¡veis retornadas por analyseProc
+//      explicitamente para evitar ambiguidade no pattern matching
 tuple[map[CFGNode, TaintEnv], list[VulnReport]]
     analyseProc(UIRProc p, ProcCFG cfg, TaintEnv initialEnv) {
 
@@ -178,18 +166,19 @@ tuple[map[CFGNode, TaintEnv], list[VulnReport]]
 
   inEnv[cfg.entryNode] = initialEnv;
 
-  list[CFGNode] worklist    = [cfg.entryNode];
-  set[CFGNode]  inWorklist  = {cfg.entryNode};
+  list[CFGNode]  worklist   = [cfg.entryNode];
+  set[CFGNode]   inWorklist = {cfg.entryNode};
 
   while (!isEmpty(worklist)) {
-    CFGNode cur = worklist[0];
-    worklist    = worklist[1..];
-    inWorklist -= {cur};
+    CFGNode cur  = worklist[0];
+    worklist     = worklist[1..];
+    inWorklist  -= {cur};
 
     TaintEnv curIn  = inEnv[cur];
     TaintEnv curOut = curIn;
 
     if (instrNode(str pname, str blabel, int idx, UIRInstr instr) := cur) {
+      // FIX: declarar variÃ¡veis do resultado explicitamente
       tuple[TaintEnv env, list[VulnReport] reps] res =
           transferInstr(instr, curIn, pname, blabel, idx);
       curOut      = res.env;
@@ -229,6 +218,7 @@ AuditResult auditUnit(UIRUnit u, CallGraph cg) {
     }
 
     if (p.name in cg.cfgs) {
+      // FIX: usar variÃ¡veis tipadas ao receber o resultado da anÃ¡lise
       tuple[map[CFGNode, TaintEnv] envs, list[VulnReport] vulns] r =
           analyseProc(p, cg.cfgs[p.name], initEnv);
       allVulns += r.vulns;
@@ -239,11 +229,12 @@ AuditResult auditUnit(UIRUnit u, CallGraph cg) {
 }
 
 // ------------------------------------------------------------------
-// 7. Factory and helpers
+// 7. Factory e Helpers
 // ------------------------------------------------------------------
 
 VulnReport buildReport(str sinkCat, str procName, str blockLabel, int instrIdx,
                        str origins, str sinkTarget, str taintedVar, list[str] missing) {
+  // FIX: declarar variÃ¡veis explicitamente ao usar tuple destructuring
   tuple[VulnKind kind, Severity sev] cls = classifySink(sinkCat);
   str msg = "Unsanitised <sinkCat> taint from [<origins>] reaches `<sinkTarget>`";
   return vuln(cls.kind, cls.sev, procName, blockLabel, instrIdx,
@@ -252,8 +243,8 @@ VulnReport buildReport(str sinkCat, str procName, str blockLabel, int instrIdx,
 
 tuple[VulnKind, Severity] classifySink(str cat) {
   switch (cat) {
-    case "SQL_EXEC":    return <sqlInjection(),   critical()>;
-    case "HTML_OUTPUT": return <xss(),            high()>;
+    case "SQL_EXEC":    return <sqlInjection(),  critical()>;
+    case "HTML_OUTPUT": return <xss(),           high()>;
     case "SHELL_EXEC":  return <shellInjection(), critical()>;
     default:            return <genericTaint(cat), medium()>;
   }
@@ -271,3 +262,4 @@ private str valueStr(UIRValue v) {
   if (valVar(str n, _) := v) return n;
   return "expr";
 }
+

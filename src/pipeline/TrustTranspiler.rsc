@@ -1,10 +1,11 @@
 module pipeline::TrustTranspiler
 
 // ============================================================
-//  Trust-Transpiler — Pipeline Orchestrator
+//  Trust-Transpiler â€” Pipeline Orchestrator
 // ============================================================
 
 import lang::universal::IR;
+import lang::universal::SecurityDefs;
 import analysis::CFG;
 import validation::Gatekeeper;
 import IO;
@@ -15,11 +16,11 @@ import Set;
 // 1. Demo fixtures
 // ------------------------------------------------------------------
 
-// FIX: UIRProc.params is now list[tuple[str, UIRType]] (anonymous tuples)
-//      to match the corrected IR.rsc definition.
+// FIX: Rascal nÃ£o aceita () como literal de map â€” Ã© necessÃ¡rio declarar
+//      a variÃ¡vel com tipo explÃ­cito antes de usar como argumento.
 
 UIRUnit sqlInjectionDemo() {
-  map[str, SecurityTag] noTags    = ();
+  map[str, SecurityTag] noTags   = ();
   map[str, UIRType]     noGlobals = ();
 
   UIRProc fetchUser = proc(
@@ -53,7 +54,7 @@ UIRUnit xssDemo() {
 
   UIRProc greetHandler = proc(
     "greetHandler",
-    [<"req", tAny()>, <"res", tAny()>],
+    [param("req", tAny()), param("res", tAny())],
     tVoid(),
     [
       block("entry", [
@@ -119,7 +120,7 @@ UIRUnit shellInjectionDemo() {
 
   UIRProc listDir = proc(
     "listDir",
-    [<"user", tString()>],
+    [param("user", tString())],
     tVoid(),
     [
       block("check", [
@@ -173,13 +174,14 @@ AuditResult runPipeline(UIRUnit u) {
 
 // ------------------------------------------------------------------
 // 3. Main entry point
+//    FIX: assinatura sem parÃ¢metros â€” o runner Rascal chama main()
 // ------------------------------------------------------------------
 
 void main() {
-  println("╔══════════════════════════════════════════════════════╗");
-  println("║         TRUST-TRANSPILER  v0.1.0                     ║");
-  println("║   Universal Static Security Analysis (Rascal MPL)    ║");
-  println("╚══════════════════════════════════════════════════════╝");
+  println("â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—");
+  println("â•‘         TRUST-TRANSPILER  v0.1.0                     â•‘");
+  println("â•‘   Universal Static Security Analysis (Rascal MPL)    â•‘");
+  println("â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•");
 
   list[UIRUnit] units = [
     sqlInjectionDemo(),
@@ -193,14 +195,15 @@ void main() {
   int totalVulns = ( 0 | it + size(r.vulnerabilities) | r <- results );
   int cleanUnits = size([ r | r <- results, r.clean ]);
 
-  println("\nSumário de Execução:");
+  println("\nSumÃ¡rio de ExecuÃ§Ã£o:");
   println(" - Unidades escaneadas: <size(units)>");
   println(" - Unidades limpas    : <cleanUnits>");
   println(" - Total vulns        : <totalVulns>");
 
   if (totalVulns > 0) {
-    println("[!] BUILD FAILED — vulnerabilidades detectadas.");
+    println("[!] BUILD FAILED â€” vulnerabilidades detectadas.");
   } else {
-    println("[✓] BUILD PASSED — sistema íntegro.");
+    println("[âœ“] BUILD PASSED â€” sistema Ã­ntegro.");
   }
 }
+

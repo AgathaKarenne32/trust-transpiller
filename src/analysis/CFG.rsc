@@ -6,6 +6,7 @@ module analysis::CFG
 // ============================================================
 
 import lang::universal::IR;
+import lang::universal::SecurityDefs;
 import Set;
 import Map;
 import List;
