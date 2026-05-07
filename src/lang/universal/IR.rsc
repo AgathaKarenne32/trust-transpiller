@@ -18,7 +18,7 @@ data UIRValue
   | valBinOp(str op, UIRValue lhs, UIRValue rhs)
   | valUnOp(str op, UIRValue operand)
   | valCast(UIRType target, UIRValue src)
-  | valPhi(list[tuple[UIRValue val, str predLabel]] branches);
+  | valPhi(list[UIRValue] branches); // Simplificado para evitar erro de parser
 
 data UIRInstr
   = iAssign(str dest, UIRValue src, SecurityTag tag)
@@ -42,7 +42,6 @@ data UIRParam = param(str paramName, UIRType paramType);
 data UIRProc = proc(str name, list[UIRParam] params, UIRType returnType, list[BasicBlock] blocks, map[str, SecurityTag] paramTags);
 data UIRUnit = unit(str sourceFile, str sourceLanguage, list[UIRProc] procs, map[str, UIRType] globals);
 
-// Helpers simplificados para evitar erros de match
 SecurityTag getTag(UIRInstr i) {
   if (iAssign(_, _, t) := i) return t;
   if (iCall(_, _, _, t) := i) return t;
@@ -58,7 +57,7 @@ set[str] readsOf(UIRValue v) {
     case valVar(n, _): return {n};
     case valField(obj, _): return readsOf(obj);
     case valBinOp(_, l, r): return readsOf(l) + readsOf(r);
-    case valPhi(list[tuple[UIRValue val, str predLabel]] bs): return ( {} | it + readsOf(b.val) | b <- bs );
+    case valPhi(list[UIRValue] bs): return ( {} | it + readsOf(b) | b <- bs );
     default: return {};
   }
 }
