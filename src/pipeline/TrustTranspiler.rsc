@@ -1,7 +1,7 @@
 module pipeline::TrustTranspiler
 
 // ============================================================
-//  Trust-Transpiler â€” Pipeline Orchestrator
+//  Trust-Transpiler — Pipeline Orchestrator
 // ============================================================
 
 import lang::universal::IR;
@@ -16,11 +16,8 @@ import Set;
 // 1. Demo fixtures
 // ------------------------------------------------------------------
 
-// FIX: Rascal nÃ£o aceita () como literal de map â€” Ã© necessÃ¡rio declarar
-//      a variÃ¡vel com tipo explÃ­cito antes de usar como argumento.
-
 UIRUnit sqlInjectionDemo() {
-  map[str, SecurityTag] noTags   = ();
+  map[str, SecurityTag] noTags    = ();
   map[str, UIRType]     noGlobals = ();
 
   UIRProc fetchUser = proc(
@@ -174,14 +171,13 @@ AuditResult runPipeline(UIRUnit u) {
 
 // ------------------------------------------------------------------
 // 3. Main entry point
-//    FIX: assinatura sem parÃ¢metros â€” o runner Rascal chama main()
 // ------------------------------------------------------------------
 
 void main() {
-  println("â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—");
-  println("â•‘         TRUST-TRANSPILER  v0.1.0                     â•‘");
-  println("â•‘   Universal Static Security Analysis (Rascal MPL)    â•‘");
-  println("â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•");
+  println("╔══════════════════════════════════════════════════════╗");
+  println("║         TRUST-TRANSPILER  v0.1.0                     ║");
+  println("║   Universal Static Security Analysis (Rascal MPL)    ║");
+  println("╚══════════════════════════════════════════════════════╝");
 
   list[UIRUnit] units = [
     sqlInjectionDemo(),
@@ -195,15 +191,14 @@ void main() {
   int totalVulns = ( 0 | it + size(r.vulnerabilities) | r <- results );
   int cleanUnits = size([ r | r <- results, r.clean ]);
 
-  println("\nSumÃ¡rio de ExecuÃ§Ã£o:");
+  println("\nSumário de Execução:");
   println(" - Unidades escaneadas: <size(units)>");
   println(" - Unidades limpas    : <cleanUnits>");
   println(" - Total vulns        : <totalVulns>");
 
   if (totalVulns > 0) {
-    println("[!] BUILD FAILED â€” vulnerabilidades detectadas.");
+    println("[!] BUILD FAILED — vulnerabilidades detectadas.");
   } else {
-    println("[âœ“] BUILD PASSED â€” sistema Ã­ntegro.");
+    println("[✓] BUILD PASSED — sistema íntegro.");
   }
 }
-

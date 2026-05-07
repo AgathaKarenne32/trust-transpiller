@@ -2,6 +2,10 @@ module lang::universal::IR
 
 import lang::universal::SecurityDefs;
 
+// ------------------------------------------------------------------
+// Types
+// ------------------------------------------------------------------
+
 data UIRType
   = tInt()
   | tFloat()
@@ -13,6 +17,13 @@ data UIRType
   | tArray(UIRType elem)
   | tMap(UIRType key, UIRType val)
   ;
+
+// ------------------------------------------------------------------
+// Values
+// FIX: valPhi usa list[tuple[UIRValue val, str predLabel]] para ser
+//      consistente com analysis::CFG e validation::Gatekeeper.
+//      A assinatura anterior valPhi(UIRValue, UIRValue) estava errada.
+// ------------------------------------------------------------------
 
 data UIRValue
   = valInt(int n)
@@ -26,10 +37,12 @@ data UIRValue
   | valBinOp(str op, UIRValue lhs, UIRValue rhs)
   | valUnOp(str op, UIRValue operand)
   | valCast(UIRType target, UIRValue src)
-  | valPhi(UIRValue phiA, UIRValue phiB)
+  | valPhi(list[tuple[UIRValue val, str predLabel]] branches)
   ;
 
-// SecurityTag defined in lang::universal::SecurityDefs
+// ------------------------------------------------------------------
+// Instructions
+// ------------------------------------------------------------------
 
 data UIRInstr
   = iAssign(str dest, UIRValue src, SecurityTag tag)
@@ -48,6 +61,10 @@ data UIRInstr
   | iEnterScope(str name)
   | iExitScope(str name)
   ;
+
+// ------------------------------------------------------------------
+// Blocks, procs and units
+// ------------------------------------------------------------------
 
 data BasicBlock = block(
   str label,
@@ -71,6 +88,10 @@ data UIRUnit = unit(
   list[UIRProc] procs,
   map[str, UIRType] globals
 );
+
+// ------------------------------------------------------------------
+// Helpers
+// ------------------------------------------------------------------
 
 SecurityTag getTag(UIRInstr i) {
   switch (i) {
@@ -98,6 +119,9 @@ str getDest(UIRInstr i) {
   }
 }
 
+// FIX: valPhi agora itera sobre branches corretamente;
+//      as variáveis a e b do código original não existiam no escopo —
+//      substituído por comprehension sobre a lista de branches.
 set[str] readsOf(UIRValue v) {
   switch (v) {
     case valVar(str n, _):                    return {n};
@@ -106,7 +130,8 @@ set[str] readsOf(UIRValue v) {
     case valBinOp(_, UIRValue l, UIRValue r): return readsOf(l) + readsOf(r);
     case valUnOp(_, UIRValue x):              return readsOf(x);
     case valCast(_, UIRValue s):              return readsOf(s);
-    case valPhi(UIRValue a, UIRValue b):      return readsOf(a) + readsOf(b);
+    case valPhi(list[tuple[UIRValue val, str predLabel]] branches):
+        return ( {} | it + readsOf(b.val) | b <- branches );
     default: return {};
   }
 }

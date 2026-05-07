@@ -64,8 +64,6 @@ ProcCFG buildProcCFG(UIRProc p) {
   map[str, BasicBlock] blkIdx = ( b.label : b | b <- p.blocks );
 
   // --- Build instruction nodes for each block ----------------
-  // FIX: usar index(list) em vez de [0 .. size(x)] para evitar
-  //      acesso fora do range (Rascal: index/1 retorna [0..size-1])
   map[str, list[CFGNode]] blockNodes = ();
 
   for (BasicBlock blk <- p.blocks) {
@@ -81,7 +79,6 @@ ProcCFG buildProcCFG(UIRProc p) {
   // --- Sequential edges within each block -------------------
   for (BasicBlock blk <- p.blocks) {
     list[CFGNode] bns = blockNodes[blk.label];
-    // FIX: [0 .. size(bns) - 1] — correto para pares consecutivos
     for (int idx <- [0 .. size(bns) - 1]) {
       edges += {<bns[idx], bns[idx + 1], flowEdge()>};
     }

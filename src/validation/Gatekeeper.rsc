@@ -1,7 +1,7 @@
 module validation::Gatekeeper
 
 // ============================================================
-//  Trust-Transpiler â€” Gatekeeper (Taint Analysis Engine)
+//  Trust-Transpiler — Gatekeeper (Taint Analysis Engine)
 // ============================================================
 
 import lang::universal::IR;
@@ -72,7 +72,7 @@ bool envLeq(TaintEnv a, TaintEnv b) {
 }
 
 // ------------------------------------------------------------------
-// 3. Transfer function â€” one instruction
+// 3. Transfer function — one instruction
 // ------------------------------------------------------------------
 
 tuple[TaintEnv, list[VulnReport]] transferInstr(
@@ -155,8 +155,6 @@ set[str] taintOfValue(UIRValue v, TaintEnv env) {
 // 5. Intra-procedural fixed-point dataflow
 // ------------------------------------------------------------------
 
-// FIX: declarar os tipos das variÃ¡veis retornadas por analyseProc
-//      explicitamente para evitar ambiguidade no pattern matching
 tuple[map[CFGNode, TaintEnv], list[VulnReport]]
     analyseProc(UIRProc p, ProcCFG cfg, TaintEnv initialEnv) {
 
@@ -178,7 +176,6 @@ tuple[map[CFGNode, TaintEnv], list[VulnReport]]
     TaintEnv curOut = curIn;
 
     if (instrNode(str pname, str blabel, int idx, UIRInstr instr) := cur) {
-      // FIX: declarar variÃ¡veis do resultado explicitamente
       tuple[TaintEnv env, list[VulnReport] reps] res =
           transferInstr(instr, curIn, pname, blabel, idx);
       curOut      = res.env;
@@ -218,7 +215,6 @@ AuditResult auditUnit(UIRUnit u, CallGraph cg) {
     }
 
     if (p.name in cg.cfgs) {
-      // FIX: usar variÃ¡veis tipadas ao receber o resultado da anÃ¡lise
       tuple[map[CFGNode, TaintEnv] envs, list[VulnReport] vulns] r =
           analyseProc(p, cg.cfgs[p.name], initEnv);
       allVulns += r.vulns;
@@ -234,7 +230,6 @@ AuditResult auditUnit(UIRUnit u, CallGraph cg) {
 
 VulnReport buildReport(str sinkCat, str procName, str blockLabel, int instrIdx,
                        str origins, str sinkTarget, str taintedVar, list[str] missing) {
-  // FIX: declarar variÃ¡veis explicitamente ao usar tuple destructuring
   tuple[VulnKind kind, Severity sev] cls = classifySink(sinkCat);
   str msg = "Unsanitised <sinkCat> taint from [<origins>] reaches `<sinkTarget>`";
   return vuln(cls.kind, cls.sev, procName, blockLabel, instrIdx,
@@ -262,4 +257,3 @@ private str valueStr(UIRValue v) {
   if (valVar(str n, _) := v) return n;
   return "expr";
 }
-
