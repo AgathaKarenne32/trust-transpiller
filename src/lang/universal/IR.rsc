@@ -2,28 +2,9 @@ module lang::universal::IR
 
 import lang::universal::SecurityDefs;
 
-// ------------------------------------------------------------------
-// Types
-// ------------------------------------------------------------------
-
 data UIRType
-  = tInt()
-  | tFloat()
-  | tString()
-  | tBool()
-  | tVoid()
-  | tAny()
-  | tRef(UIRType inner)
-  | tArray(UIRType elem)
-  | tMap(UIRType key, UIRType val)
-  ;
-
-// ------------------------------------------------------------------
-// Values
-// FIX: valPhi usa list[tuple[UIRValue val, str predLabel]] para ser
-//      consistente com analysis::CFG e validation::Gatekeeper.
-//      A assinatura anterior valPhi(UIRValue, UIRValue) estava errada.
-// ------------------------------------------------------------------
+  = tInt() | tFloat() | tString() | tBool() | tVoid() | tAny()
+  | tRef(UIRType inner) | tArray(UIRType elem) | tMap(UIRType key, UIRType val);
 
 data UIRValue
   = valInt(int n)
@@ -37,12 +18,7 @@ data UIRValue
   | valBinOp(str op, UIRValue lhs, UIRValue rhs)
   | valUnOp(str op, UIRValue operand)
   | valCast(UIRType target, UIRValue src)
-  | valPhi(list[tuple[UIRValue val, str predLabel]] branches)
-  ;
-
-// ------------------------------------------------------------------
-// Instructions
-// ------------------------------------------------------------------
+  | valPhi(list[tuple[UIRValue val, str predLabel]] branches);
 
 data UIRInstr
   = iAssign(str dest, UIRValue src, SecurityTag tag)
@@ -59,79 +35,30 @@ data UIRInstr
   | iNop()
   | iComment(str text)
   | iEnterScope(str name)
-  | iExitScope(str name)
-  ;
+  | iExitScope(str name);
 
-// ------------------------------------------------------------------
-// Blocks, procs and units
-// ------------------------------------------------------------------
-
-data BasicBlock = block(
-  str label,
-  list[UIRInstr] instrs,
-  list[str] successors
-);
-
+data BasicBlock = block(str label, list[UIRInstr] instrs, list[str] successors);
 data UIRParam = param(str paramName, UIRType paramType);
+data UIRProc = proc(str name, list[UIRParam] params, UIRType returnType, list[BasicBlock] blocks, map[str, SecurityTag] paramTags);
+data UIRUnit = unit(str sourceFile, str sourceLanguage, list[UIRProc] procs, map[str, UIRType] globals);
 
-data UIRProc = proc(
-  str name,
-  list[UIRParam] params,
-  UIRType returnType,
-  list[BasicBlock] blocks,
-  map[str, SecurityTag] paramTags
-);
-
-data UIRUnit = unit(
-  str sourceFile,
-  str sourceLanguage,
-  list[UIRProc] procs,
-  map[str, UIRType] globals
-);
-
-// ------------------------------------------------------------------
-// Helpers
-// ------------------------------------------------------------------
-
+// Helpers simplificados para evitar erros de match
 SecurityTag getTag(UIRInstr i) {
-  switch (i) {
-    case iAssign(_, _, SecurityTag t):           return t;
-    case iCall(_, _, _, SecurityTag t):          return t;
-    case iMethodCall(_, _, _, _, SecurityTag t): return t;
-    case iReturn(_, SecurityTag t):              return t;
-    case iStore(_, _, SecurityTag t):            return t;
-    case iLoad(_, _, SecurityTag t):             return t;
-    default:                                     return Neutral();
-  }
+  if (iAssign(_, _, t) := i) return t;
+  if (iCall(_, _, _, t) := i) return t;
+  if (iMethodCall(_, _, _, _, t) := i) return t;
+  if (iReturn(_, t) := i) return t;
+  if (iStore(_, _, t) := i) return t;
+  if (iLoad(_, _, t) := i) return t;
+  return Neutral();
 }
 
-bool isSource(UIRInstr i)    = Source(_, _, _)    := getTag(i);
-bool isSink(UIRInstr i)      = Sink(_, _, _)      := getTag(i);
-bool isSanitizer(UIRInstr i) = Sanitizer(_, _, _) := getTag(i);
-
-str getDest(UIRInstr i) {
-  switch (i) {
-    case iAssign(str d, _, _):           return d;
-    case iCall(str d, _, _, _):          return d;
-    case iMethodCall(str d, _, _, _, _): return d;
-    case iLoad(str d, _, _):             return d;
-    default:                             return "";
-  }
-}
-
-// FIX: valPhi agora itera sobre branches corretamente;
-//      as variáveis a e b do código original não existiam no escopo —
-//      substituído por comprehension sobre a lista de branches.
 set[str] readsOf(UIRValue v) {
   switch (v) {
-    case valVar(str n, _):                    return {n};
-    case valField(UIRValue obj, _):           return readsOf(obj);
-    case valIndex(UIRValue a, UIRValue i):    return readsOf(a) + readsOf(i);
-    case valBinOp(_, UIRValue l, UIRValue r): return readsOf(l) + readsOf(r);
-    case valUnOp(_, UIRValue x):              return readsOf(x);
-    case valCast(_, UIRValue s):              return readsOf(s);
-    case valPhi(list[tuple[UIRValue val, str predLabel]] branches):
-        return ( {} | it + readsOf(b.val) | b <- branches );
+    case valVar(n, _): return {n};
+    case valField(obj, _): return readsOf(obj);
+    case valBinOp(_, l, r): return readsOf(l) + readsOf(r);
+    case valPhi(list[tuple[UIRValue val, str predLabel]] bs): return ( {} | it + readsOf(b.val) | b <- bs );
     default: return {};
   }
 }
