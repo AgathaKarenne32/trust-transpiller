@@ -1,7 +1,7 @@
 module analysis::CFG
 
 // ============================================================
-//  Trust-Transpiler — Control Flow Graph Builder
+//  trust-transpiler — Control Flow Graph Builder
 //  analysis::CFG
 // ============================================================
 

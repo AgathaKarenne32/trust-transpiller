@@ -1,7 +1,7 @@
 module validation::Gatekeeper
 
 // ============================================================
-//  Trust-Transpiler — Gatekeeper (Taint Analysis Engine)
+//  trust-transpiler — Gatekeeper (Taint Analysis Engine)
 // ============================================================
 
 import lang::universal::IR;

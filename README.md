@@ -8,7 +8,7 @@
 
 ## Visão Geral
 
-O **Trust-Transpiler** é uma ferramenta de análise estática de segurança que detecta vulnerabilidades de fluxo de dados — como **SQL Injection** e **XSS** — em código de múltiplas linguagens (PHP, JavaScript, Java, etc.), utilizando uma **Representação Intermediária Universal (UIR)** como alvo único de todos os front-ends.
+O **trust-transpiler** é uma ferramenta de análise estática de segurança que detecta vulnerabilidades de fluxo de dados — como **SQL Injection** e **XSS** — em código de múltiplas linguagens (PHP, JavaScript, Java, etc.), utilizando uma **Representação Intermediária Universal (UIR)** como alvo único de todos os front-ends.
 
 A análise é realizada por um motor de **Taint Analysis Sensível ao Fluxo**, que acompanha a propagação de dados não-confiáveis desde sua entrada (*Source*) até seu uso em operações sensíveis (*Sink*), detectando ausência de higienização (*Sanitizer*) no caminho.
 
@@ -216,7 +216,7 @@ java -Xmx2G -Xss32m \
 ║   Universal Static Security Analysis (Rascal MPL)   ║
 ╚══════════════════════════════════════════════════════╝
 
-[TrustTranspiler] Processing: demo_sqli.php (PHP)
+[trusttranspiler] Processing: demo_sqli.php (PHP)
 ═══════════════════════════════════════════════════════
   TRUST-TRANSPILER AUDIT REPORT
 ═══════════════════════════════════════════════════════

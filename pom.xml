@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  pom.xml — Trust-Transpiler
+  pom.xml — trust-transpiler
   
   IMPORTANTE: Este pom.xml é apenas um DESCRITOR DO PROJETO.
   Ele NÃO declara dependências externas (como org.rascalmpl:rascal)
@@ -22,7 +22,7 @@
   <version>0.1.0</version>
   <packaging>jar</packaging>
 
-  <name>Trust-Transpiler</name>
+  <name>trust-transpiler</name>
   <description>Universal Static Security Auditor — Taint Analysis in Rascal MPL</description>
 
   <properties>

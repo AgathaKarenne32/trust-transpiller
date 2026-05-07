@@ -18,7 +18,7 @@ data UIRValue
   | valBinOp(str op, UIRValue lhs, UIRValue rhs)
   | valUnOp(str op, UIRValue operand)
   | valCast(UIRType target, UIRValue src)
-  | valPhi(list[tuple[UIRValue, str]] branches); // Removidos nomes internos
+  | valPhi(list[tuple[UIRValue, str]] branches); // Removidos nomes internos para o parser
 
 data UIRInstr
   = iAssign(str dest, UIRValue src, SecurityTag tag)

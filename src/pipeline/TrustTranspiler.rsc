@@ -1,7 +1,7 @@
 module pipeline::TrustTranspiler
 
 // ============================================================
-//  Trust-Transpiler — Pipeline Orchestrator
+//  trust-transpiler — Pipeline Orchestrator
 // ============================================================
 
 import lang::universal::IR;

@@ -1,4 +1,4 @@
-name: Trust-Transpiler CI
+name: trust-transpiler CI
 
 on:
   push:
@@ -85,7 +85,7 @@ jobs:
       #   (3) .                        — raiz do projeto
       #       (para o Rascal localizar META-INF/RASCAL.MF)
       # -------------------------------------------------------
-      - name: Run Trust-Transpiler static audit
+      - name: Run trust-transpiler static audit
         run: |
           touch audit_output.txt
 
@@ -119,7 +119,7 @@ jobs:
       - name: Parse vulnerability summary
         if: always()
         run: |
-          echo "## Trust-Transpiler Audit Summary" >> $GITHUB_STEP_SUMMARY
+          echo "## trust-transpiler Audit Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if grep -q "BUILD PASSED" audit_output.txt; then
             echo "✅ **Nenhuma vulnerabilidade detectada.**" >> $GITHUB_STEP_SUMMARY
