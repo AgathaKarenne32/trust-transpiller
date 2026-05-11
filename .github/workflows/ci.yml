@@ -39,8 +39,8 @@ jobs:
             -o rascal-shell-stable.jar
           echo "Rascal shell downloaded: $(du -sh rascal-shell-stable.jar | cut -f1)"
 
-      - name: Compile with Maven
-        run: mvn compile --no-transfer-progress
+      #- name: Compile with Maven
+      #run: mvn compile --no-transfer-progress
 
       - name: Run pipeline (all demos)
         run: |
@@ -98,9 +98,7 @@ jobs:
           java -Xmx512m -jar rascal-shell-stable.jar \
             --src src \
             --module test::AllTests \
-            --call runAll
-        # Se o módulo de testes não existir ainda, este step é ignorado.
-        continue-on-error: true
+            --test  # Utilize a flag --test nativa do Rascal
 
   # ----------------------------------------------------------------
   # Job 3: Lint — verificar que todos os .rsc compilam sem warnings

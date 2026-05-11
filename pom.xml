@@ -14,7 +14,7 @@
   <description>Universal Static Security Analysis using Rascal MPL</description>
 
   <properties>
-    <rascal.version>0.42.0</rascal.version>
+    <rascal.version>0.40.1</rascal.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
 
