@@ -1,0 +1,33 @@
+# ── Maven build output ──────────────────────────────────────
+target/
+*.class
+
+# ── Rascal compiled cache ───────────────────────────────────
+bin/
+*.tpl
+
+# ── Rascal shell JAR (baixado localmente, não versionar) ────
+rascal-shell-stable.jar
+rascal*.jar
+
+# ── IDEs ────────────────────────────────────────────────────
+.project
+.classpath
+.settings/
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.code-workspace
+
+# ── OS ──────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Logs e relatórios ───────────────────────────────────────
+*.log
+audit-report/
+
+# ── Dependências locais não gerenciadas pelo Maven ──────────
+lib/
