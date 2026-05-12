@@ -49,19 +49,25 @@
     <sourceDirectory>src</sourceDirectory>
     <plugins>
       <plugin>
-        <groupId>org.rascalmpl</groupId>
-        <artifactId>rascal-maven-plugin</artifactId>
-        <version>${rascal.maven.version}</version>
-        <executions>
-          <execution>
-            <id>compile-rascal</id>
-            <phase>compile</phase>
-            <goals>
-              <goal>compile</goal>
-            </goals>
-          </execution>
-        </executions>
-      </plugin>
+  <groupId>org.rascalmpl</groupId>
+  <artifactId>rascal-maven-plugin</artifactId>
+  <version>0.8.2</version> <executions>
+    <execution>
+      <id>compile-rascal</id>
+      <phase>compile</phase>
+      <goals><goal>compile</goal></goals>
+      <configuration>
+        <errorsAsWarnings>false</errorsAsWarnings>
+        <srcs>
+          <src>${project.basedir}/src/main/rascal</src>
+        </srcs>
+        <libs>
+          <lib>|lib://rascal|</lib>
+        </libs>
+      </configuration>
+    </execution>
+  </executions>
+</plugin>
     </plugins>
   </build>
 </project>
