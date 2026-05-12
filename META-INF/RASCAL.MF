@@ -2,5 +2,4 @@ Manifest-Version: 1.0
 Main-Module: pipeline::TrustTranspiler
 Project-Name: trust-transpiler
 Project-Version: 0.1.0
-Require-Libraries: org.rascalmpl.library
 Source: src/main/rascal
