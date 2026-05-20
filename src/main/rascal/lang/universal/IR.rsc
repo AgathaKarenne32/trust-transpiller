@@ -2,14 +2,17 @@ module lang::universal::IR
 
 import lang::universal::SecurityDefs;
 
-/*
-  Fixes applied:
-  1. No inline comments inside 'data' declarations (parse error in Rascal 0.42).
-  2. Removed backslash escapes from 'val' and 'type' — not reserved in Rascal,
-     and the escape itself caused a parse error.
-  3. readsOf(valPhi) now uses correct field names phiA / phiB.
-  4. iReturn field renamed retVal to avoid confusion.
-*/
+data UIRType
+  = tInt()
+  | tFloat()
+  | tString()
+  | tBool()
+  | tVoid()
+  | tAny()
+  | tRef(UIRType inner)
+  | tArray(UIRType elem)
+  | tMap(UIRType key, UIRType val)
+  ;
 
 data UIRType
   = tInt()

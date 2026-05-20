@@ -8,20 +8,32 @@ import IO;
 import List;
 import Set;
 
+// Fixture para OWASP A07 (Broken Auth / Segredos Expostos)
+UIRUnit brokenAuthDemo() {
+  map[str, SecurityTag] noTags    = ();
+  map[str, UIRType]     noGlobals = ();
+  UIRProc checkAuth = proc(
+    "checkAuth", [], tVoid(),
+    [block("entry", [
+        iAssign("passwd", valStr("admin_password_123"), 
+          Source("HARDCODED_SECRET", "static_config", {"passwd"})),
+        iCall("_", "login_attempt", [valVar("passwd", tString())], 
+          Sink("CREDENTIAL_STORE", "login_attempt", {"HASH_SHA256"})),
+        iReturn(valNull(), Neutral())
+      ], [])
+    ], noTags);
+  return unit("demo_auth.java", "Java", [checkAuth], noGlobals);
+}
+
 UIRUnit sqlInjectionDemo() {
   map[str, SecurityTag] noTags    = ();
   map[str, UIRType]     noGlobals = ();
   UIRProc fetchUser = proc(
     "fetchUser", [], tVoid(),
     [block("entry", [
-        iAssign("id",
-          valVar("_GET_id", tString()),
-          Source("HTTP_PARAM", "$_GET[id]", {"id"})),
-        iAssign("sql",
-          valBinOp(".", valStr("SELECT * FROM users WHERE id="), valVar("id", tString())),
-          Propagation({"id"}, {"sql"})),
-        iCall("result", "mysql_query", [valVar("sql", tString())],
-          Sink("SQL_EXEC", "mysql_query", {"PREPARED_STMT", "INTVAL"})),
+        iAssign("id", valVar("_GET_id", tString()), Source("HTTP_PARAM", "$_GET[id]", {"id"})),
+        iAssign("sql", valBinOp(".", valStr("SELECT * FROM users WHERE id="), valVar("id", tString())), Propagation({"id"}, {"sql"})),
+        iCall("result", "mysql_query", [valVar("sql", tString())], Sink("SQL_EXEC", "mysql_query", {"PREPARED_STMT", "INTVAL"})),
         iReturn(valNull(), Neutral())
       ], [])
     ], noTags);
@@ -34,15 +46,9 @@ UIRUnit xssDemo() {
   UIRProc greetHandler = proc(
     "greetHandler", [param("req", tAny()), param("res", tAny())], tVoid(),
     [block("entry", [
-        iLoad("name",
-          valField(valField(valVar("req", tAny()), "query"), "name"),
-          Source("HTTP_PARAM", "req.query.name", {"name"})),
-        iAssign("greeting",
-          valBinOp("+", valBinOp("+", valStr("Hello "), valVar("name", tString())), valStr("!")),
-          Propagation({"name"}, {"greeting"})),
-        iMethodCall("_", valVar("res", tAny()), "send",
-          [valVar("greeting", tString())],
-          Sink("HTML_OUTPUT", "res.send", {"HTML_ESCAPE", "DOMPurify"})),
+        iLoad("name", valField(valField(valVar("req", tAny()), "query"), "name"), Source("HTTP_PARAM", "req.query.name", {"name"})),
+        iAssign("greeting", valBinOp("+", valBinOp("+", valStr("Hello "), valVar("name", tString())), valStr("!")), Propagation({"name"}, {"greeting"})),
+        iMethodCall("_", valVar("res", tAny()), "send", [valVar("greeting", tString())], Sink("HTML_OUTPUT", "res.send", {"HTML_ESCAPE", "DOMPurify"})),
         iReturn(valNull(), Neutral())
       ], [])
     ], noTags);
@@ -55,17 +61,10 @@ UIRUnit cleanSqlDemo() {
   UIRProc safeFetchUser = proc(
     "safeFetchUser", [], tVoid(),
     [block("entry", [
-        iAssign("raw",
-          valVar("_GET_id", tString()),
-          Source("HTTP_PARAM", "$_GET[id]", {"raw"})),
-        iAssign("id",
-          valCast(tInt(), valVar("raw", tString())),
-          Sanitizer("HTTP_PARAM", "INTVAL", {"raw", "id"})),
-        iAssign("sql",
-          valBinOp(".", valStr("SELECT * FROM users WHERE id="), valVar("id", tInt())),
-          Propagation({"id"}, {"sql"})),
-        iCall("result", "mysql_query", [valVar("sql", tString())],
-          Sink("SQL_EXEC", "mysql_query", {"PREPARED_STMT", "INTVAL"})),
+        iAssign("raw", valVar("_GET_id", tString()), Source("HTTP_PARAM", "$_GET[id]", {"raw"})),
+        iAssign("id", valCast(tInt(), valVar("raw", tString())), Sanitizer("HTTP_PARAM", "INTVAL", {"raw", "id"})),
+        iAssign("sql", valBinOp(".", valStr("SELECT * FROM users WHERE id="), valVar("id", tInt())), Propagation({"id"}, {"sql"})),
+        iCall("result", "mysql_query", [valVar("sql", tString())], Sink("SQL_EXEC", "mysql_query", {"PREPARED_STMT", "INTVAL"})),
         iReturn(valNull(), Neutral())
       ], [])
     ], noTags);
@@ -83,14 +82,9 @@ UIRUnit shellInjectionDemo() {
         iCondJump(valVar("isAdmin", tBool()), "exec", "end")
       ], ["exec", "end"]),
       block("exec", [
-        iAssign("dir",
-          valVar("_POST_dir", tString()),
-          Source("HTTP_PARAM", "$_POST[dir]", {"dir"})),
-        iAssign("cmd",
-          valBinOp(".", valStr("ls "), valVar("dir", tString())),
-          Propagation({"dir"}, {"cmd"})),
-        iCall("_", "shell_exec", [valVar("cmd", tString())],
-          Sink("SHELL_EXEC", "shell_exec", {"ESCAPESHELLARG"})),
+        iAssign("dir", valVar("_POST_dir", tString()), Source("HTTP_PARAM", "$_POST[dir]", {"dir"})),
+        iAssign("cmd", valBinOp(".", valStr("ls "), valVar("dir", tString())), Propagation({"dir"}, {"cmd"})),
+        iCall("_", "shell_exec", [valVar("cmd", tString())], Sink("SHELL_EXEC", "shell_exec", {"ESCAPESHELLARG"})),
         iJump("end")
       ], ["end"]),
       block("end", [
@@ -101,7 +95,6 @@ UIRUnit shellInjectionDemo() {
 }
 
 CallGraph buildGraphs(UIRUnit u) = buildCallGraph(u);
-
 AuditResult runAudit(UIRUnit u, CallGraph cg) = auditUnit(u, cg);
 
 void printAudit(AuditResult ar) {
@@ -118,7 +111,7 @@ AuditResult runPipeline(UIRUnit u) {
 
 void main() {
   println("=======================================================");
-  println("  TRUST-TRANSPILER  v0.1.0");
+  println("  TRUST-TRANSPILER  v0.1.0 - SECURITY GAUNTLET");
   println("  Universal Static Security Analysis (Rascal MPL)");
   println("=======================================================");
 
@@ -126,7 +119,8 @@ void main() {
     sqlInjectionDemo(),
     xssDemo(),
     cleanSqlDemo(),
-    shellInjectionDemo()
+    shellInjectionDemo(),
+    brokenAuthDemo() // Nova unidade integrada
   ];
 
   list[AuditResult] results = [runPipeline(u) | u <- units];
@@ -134,14 +128,17 @@ void main() {
   int totalVulns = (0 | it + size(r.vulnerabilities) | r <- results);
   int cleanUnits = size([r | r <- results, r.clean]);
 
-  println("\nSumario de Execucao:");
+  println("\nSumario de Execucao Final:");
   println("  Unidades escaneadas : <size(units)>");
   println("  Unidades limpas     : <cleanUnits>");
   println("  Total vulns         : <totalVulns>");
 
+  // Implementação Prática do Security Gate (CLASP Principle)
   if (totalVulns > 0) {
-    println("\n[!] BUILD FAILED - vulnerabilidades detectadas.");
+    println("\n[!] SECURITY GATE TRIGGERED: Vulnerabilidades críticas ativas.");
+    // Força a interrupção abrupta da execução com erro sem capturar, quebrando a build do CI
+    throw "BUILD FAILED - Falhas de seguranca detectadas no orquestrador.";
   } else {
-    println("\n[OK] BUILD PASSED - sistema integro.");
+    println("\n[OK] BUILD PASSED - Codigo em conformidade corporativa.");
   }
 }
