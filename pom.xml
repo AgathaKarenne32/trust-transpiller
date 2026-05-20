@@ -1,73 +1,71 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
-           http://maven.apache.org/xsd/maven-4.0.0.xsd">
-  <modelVersion>4.0.0</modelVersion>
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
 
-  <groupId>io.github.trust-transpiller</groupId>
-  <artifactId>trust-transpiller</artifactId>
-  <version>0.1.0</version>
-  <packaging>jar</packaging>
+    <groupId>io.github.trust-transpiller</groupId>
+    <artifactId>trust-transpiller</artifactId>
+    <version>0.1.0</version>
+    <packaging>jar</packaging>
 
-  <name>Trust-Transpiller</name>
-  <description>Universal Static Security Analysis using Rascal MPL</description>
+    <name>Trust-Transpiler</name>
+    <description>Universal Static Security Analysis using Rascal MPL</description>
 
-  <properties>
-    <!-- Versão confirmada em releases.usethesource.io (0.42.1) -->
-    <rascal.version>0.42.1</rascal.version>
-    <!-- Plugin compatível com rascal 0.42.x conforme release notes -->
-    <rascal.maven.version>0.31.0</rascal.maven.version>
-    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <maven.compiler.source>11</maven.compiler.source>
-    <maven.compiler.target>11</maven.compiler.target>
-  </properties>
+    <properties>
+        <rascal.version>0.42.2</rascal.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.source>11</maven.compiler.source>
+        <maven.compiler.target>11</maven.compiler.target>
+    </properties>
 
-  <repositories>
-    <repository>
-      <id>usethesource</id>
-      <url>https://releases.usethesource.io/maven/</url>
-    </repository>
-  </repositories>
+    <repositories>
+        <repository>
+            <id>usethesource</id>
+            <url>https://releases.usethesource.io/maven/</url>
+        </repository>
+    </repositories>
 
-  <pluginRepositories>
-    <pluginRepository>
-      <id>usethesource</id>
-      <url>https://releases.usethesource.io/maven/</url>
-    </pluginRepository>
-  </pluginRepositories>
+    <pluginRepositories>
+        <pluginRepository>
+            <id>usethesource</id>
+            <url>https://releases.usethesource.io/maven/</url>
+        </pluginRepository>
+    </pluginRepositories>
 
-  <dependencies>
-    <dependency>
-      <groupId>org.rascalmpl</groupId>
-      <artifactId>rascal</artifactId>
-      <version>${rascal.version}</version>
-    </dependency>
-  </dependencies>
+    <dependencies>
+        <dependency>
+            <groupId>org.rascalmpl</groupId>
+            <artifactId>rascal</artifactId>
+            <version>${rascal.version}</version>
+        </dependency>
+    </dependencies>
 
-  <build>
-    <sourceDirectory>src</sourceDirectory>
-    <plugins>
-      <plugin>
-  <groupId>org.rascalmpl</groupId>
-  <artifactId>rascal-maven-plugin</artifactId>
-  <version>0.8.2</version> <executions>
-    <execution>
-      <id>compile-rascal</id>
-      <phase>compile</phase>
-      <goals><goal>compile</goal></goals>
-      <configuration>
-        <errorsAsWarnings>false</errorsAsWarnings>
-        <srcs>
-          <src>${project.basedir}/src/main/rascal</src>
-        </srcs>
-        <libs>
-          <lib>|lib://rascal|</lib>
-        </libs>
-      </configuration>
-    </execution>
-  </executions>
-</plugin>
-    </plugins>
-  </build>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.rascalmpl</groupId>
+                <artifactId>rascal-maven-plugin</artifactId>
+                <version>0.8.2</version>
+                <executions>
+                    <execution>
+                        <id>compile-rascal</id>
+                        <phase>compile</phase>
+                        <goals>
+                            <goal>compile</goal>
+                        </goals>
+                        <configuration>
+                            <errorsAsWarnings>true</errorsAsWarnings>
+                            <srcs>
+                                <src>${project.basedir}/src/main/rascal</src>
+                            </srcs>
+                            <libs>
+                                <lib>|lib://rascal|</lib>
+                            </libs>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 </project>
